@@ -78,17 +78,14 @@ def _cached_vs():
     return get_vi()
 
 
-@st.cache_data(ttl=30)
 def _cached_stats():
     _, gs, _, _, _, _, _ = _lazy_feedback()
     return gs()
 
-@st.cache_data(ttl=30)
 def _cached_qa_count():
     _, _, _, _, gqc, _, _ = _lazy_feedback()
     return gqc()
 
-@st.cache_data(ttl=30)
 def _cached_rec():
     _, _, gr, _, _, _, _ = _lazy_feedback()
     return gr()
