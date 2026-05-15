@@ -230,11 +230,14 @@ _DOMAIN_KEYWORDS = {
 CHAT_FALLBACK_THRESHOLD = 0.42
 CHAT_DOMAIN_THRESHOLD = 0.55
 
-CHAT_SYSTEM_PROMPT = """你是 MyLibrary RAG 智能文档问答系统的助手。你的职责：
-1. 当用户问关于知识库文档中的内容时，基于检索到的文档回答（由系统自动处理）
-2. 当用户进行日常问候、闲聊或问非文档问题时，友好地直接回答
-3. 自我介绍时说明：你是一个基于 RAG（检索增强生成）技术构建的本地知识库问答系统，使用 DeepSeek 大模型驱动，支持 Python、LangChain、Streamlit 等技术文档的智能检索与问答。
-4. 回答风格：简洁、专业、有帮助。中文回答。"""
+CHAT_SYSTEM_PROMPT = """你是一个智能助手，基于 DeepSeek 大模型驱动。
+
+【重要规则】
+- 当用户问的问题**不在**知识库文档范围内（如学习路线推荐、生活常识、编程建议、开放性问题等），请直接用你的通用知识回答，不要说"无法回答"或"知识库中没有"，就像一个正常的 AI 助手一样帮助用户。
+- 当用户问的是**文档相关**的具体技术问题，系统会自动走 RAG 检索流程，你不需要特别说明。
+- 日常问候、闲聊、翻译、写作等任何问题都请正常回答。
+
+回答风格：简洁、专业、有帮助。中文回答。"""
 
 
 def _looks_like_chat_question(question):
@@ -300,7 +303,19 @@ def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="s
     qa_chain = get_qa_chain(k=k, prompt_mode=prompt_mode, search_type=search_type,
                             fetch_k=fetch_k, lambda_mult=lambda_mult)
     result = qa_chain.invoke({"query": question})
-    return result["result"], _extract_sources(result.get("source_documents", [])), "rag"
+    rag_answer = result["result"]
+    sources = _extract_sources(result.get("source_documents", []))
+
+    _RAG_EMPTY_PATTERNS = [
+        "无法回答", "无法提供", "无法找到", "没有包含",
+        "文档内容中未", "上下文中没有", "提供的文档",
+        "知识库中没有", "检索到的文档", "根据提供的文档内容，无法",
+    ]
+    if any(p in rag_answer for p in _RAG_EMPTY_PATTERNS):
+        answer = _chat_directly(question)
+        return answer, [], "chat"
+
+    return rag_answer, sources, "rag"
 
 
 class ConversationManager:
@@ -427,8 +442,28 @@ class ConversationManager:
 
         chain = self._get_chain()
         result = chain.invoke({"query": condensed})
-        answer = result["result"]
+        rag_answer = result["result"]
         sources = _extract_sources(result.get("source_documents", []))
+
+        _RAG_EMPTY_PATTERNS = [
+            "无法回答", "无法提供", "无法找到", "没有包含",
+            "文档内容中未", "上下文中没有", "提供的文档",
+            "知识库中没有", "检索到的文档", "根据提供的文档内容，无法",
+        ]
+        if any(p in rag_answer for p in _RAG_EMPTY_PATTERNS):
+            llm_chat = get_llm(temperature=0.7)
+            chat_history = self.memory.chat_memory.messages
+            answer = _chat_directly(question, chat_history)
+            self.memory.chat_memory.add_user_message(question)
+            self.memory.chat_memory.add_ai_message(answer)
+            if self.memory_window:
+                history = self.memory.chat_memory.messages
+                if len(history) > self.memory_window * 2:
+                    trimmed = history[-(self.memory_window * 2):]
+                    self.memory.chat_memory.messages = trimmed
+            return answer, [], "chat"
+
+        answer = rag_answer
 
         self.memory.chat_memory.add_user_message(question)
         self.memory.chat_memory.add_ai_message(answer)
