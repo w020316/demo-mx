@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+chroma_db/
+pylibs/
+.cache/
+data/
+feedback/
+*.egg-info/
+dist/
+build/
+.streamlit/secrets.toml
