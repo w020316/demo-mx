@@ -45,11 +45,78 @@ st.markdown("""
 
 .tab-content { font-size:.82rem; }
 .metric-row { margin:8px 0; }
-
-[data-testid="stAppDeployButton"] { display: none !important; }
-[data-testid="stAppViewFooter"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
+
+import streamlit.components.v1 as components
+
+components.html("""
+<script>
+(function(){
+  var T = {
+    'Deploy':'部署','Rerun':'重新运行','Auto rerun':'自动重新运行',
+    'Clear cache':'清除缓存','Print':'打印','Record screen':'录制屏幕',
+    'Settings':'设置','About':'关于','Ask AI':'询问AI',
+    'Light':'浅色','Dark':'深色','System':'跟随系统',
+    'Built with Streamlit':'基于 Streamlit 构建',
+    'Deploy this app':'部署此应用',
+    'Share your app':'分享你的应用',
+    'Your app is running locally':'应用正在本地运行',
+    'Theme':'主题',
+    'Search':'搜索','Close':'关闭','Expand sidebar':'展开侧边栏',
+    'Collapse sidebar':'收起侧边栏',
+    'Not now':'以后再说','Continue':'继续',
+    'Developer menu':'开发者菜单',
+    'Screencast':'屏幕录制',
+    'Camera':'摄像头',
+    'Microphone':'麦克风',
+    'Screenshot':'截图',
+  };
+  function tr(el){
+    if(!el||el.nodeType!==1)return;
+    if(el.tagName==='SCRIPT'||el.tagName==='STYLE')return;
+    for(var i=0;i<el.childNodes.length;i++){
+      var n=el.childNodes[i];
+      if(n.nodeType===3){
+        var t=n.textContent;
+        for(var k in T){
+          if(t.indexOf(k)!==-1){
+            n.textContent=t.split(k).join(T[k]);
+          }
+        }
+      }else if(n.nodeType===1){
+        tr(n);
+      }
+    }
+    if(el.placeholder){
+      for(var k in T){if(el.placeholder.indexOf(k)!==-1)el.placeholder=el.placeholder.split(k).join(T[k]);}
+    }
+    if(el.title){
+      for(var k in T){if(el.title.indexOf(k)!==-1)el.title=el.title.split(k).join(T[k]);}
+    }
+    if(el.getAttribute('aria-label')){
+      var a=el.getAttribute('aria-label');
+      for(var k in T){if(a.indexOf(k)!==-1){a=a.split(k).join(T[k]);el.setAttribute('aria-label',a);}}
+    }
+  }
+  function doTranslate(){
+    tr(document.body);
+  }
+  var obs=new MutationObserver(function(muts){
+    var need=false;
+    for(var i=0;i<muts.length;i++){
+      if(muts[i].addedNodes.length>0){need=true;break;}
+    }
+    if(need)doTranslate();
+  });
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',function(){doTranslate();obs.observe(document.body,{childList:true,subtree:true});});
+  }else{
+    doTranslate();obs.observe(document.body,{childList:true,subtree:true});
+  }
+})();
+</script>
+""", height=0)
 
 
 def _lazy_qa_chain():
