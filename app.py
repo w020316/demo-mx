@@ -45,6 +45,9 @@ st.markdown("""
 
 .tab-content { font-size:.82rem; }
 .metric-row { margin:8px 0; }
+
+[data-testid="stAppDeployButton"] { display: none !important; }
+[data-testid="stAppViewFooter"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 

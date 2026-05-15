@@ -3,5 +3,9 @@ port = 8501
 headless = true
 fileWatcherType = "none"
 
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
 [global]
 developmentMode = false
