@@ -58,12 +58,26 @@ def _lazy_qa_chain():
 
 
 def _lazy_feedback():
-    from feedback_engine import (
-        record_rating, get_stats, get_recommendation,
-        check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
-        get_negative_reasons,
-    )
-    return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, get_negative_reasons
+    try:
+        from feedback_engine import (
+            record_rating, get_stats, get_recommendation,
+            check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
+            get_negative_reasons,
+        )
+        return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, get_negative_reasons
+    except ImportError:
+        from feedback_engine import (
+            record_rating, get_stats, get_recommendation,
+            check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
+        )
+        _fallback_neg_reasons = {
+            "inaccurate": "回答不准确",
+            "irrelevant": "来源与问题无关",
+            "incomplete": "回答不完整",
+            "format_bad": "格式/排版混乱",
+            "other": "其他原因",
+        }
+        return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, lambda: _fallback_neg_reasons
 
 
 def _invalidate_cache():
