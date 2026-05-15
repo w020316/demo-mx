@@ -227,7 +227,8 @@ _DOMAIN_KEYWORDS = {
     "深度学习", "nlp", "自然语言", "对话", "生成", "微调",
 }
 
-CHAT_FALLBACK_THRESHOLD = 0.52
+CHAT_FALLBACK_THRESHOLD = 0.42
+CHAT_DOMAIN_THRESHOLD = 0.55
 
 CHAT_SYSTEM_PROMPT = """你是 MyLibrary RAG 智能文档问答系统的助手。你的职责：
 1. 当用户问关于知识库文档中的内容时，基于检索到的文档回答（由系统自动处理）
@@ -285,8 +286,16 @@ def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="s
             return reject_msg, [], "reject"
 
     if max_score < CHAT_FALLBACK_THRESHOLD:
-        answer = _chat_directly(question)
-        return answer, [], "chat"
+        q_lower = question.lower()
+        if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
+            answer = _chat_directly(question)
+            return answer, [], "chat"
+
+    if max_score < CHAT_DOMAIN_THRESHOLD:
+        q_lower = question.lower()
+        if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
+            answer = _chat_directly(question)
+            return answer, [], "chat"
 
     qa_chain = get_qa_chain(k=k, prompt_mode=prompt_mode, search_type=search_type,
                             fetch_k=fetch_k, lambda_mult=lambda_mult)
@@ -383,17 +392,34 @@ class ConversationManager:
                 return reject_msg, [], "reject"
 
         if max_score < CHAT_FALLBACK_THRESHOLD:
-            llm = get_llm(temperature=0.7)
-            chat_history = self.memory.chat_memory.messages
-            answer = _chat_directly(question, chat_history)
-            self.memory.chat_memory.add_user_message(question)
-            self.memory.chat_memory.add_ai_message(answer)
-            if self.memory_window:
-                history = self.memory.chat_memory.messages
-                if len(history) > self.memory_window * 2:
-                    trimmed = history[-(self.memory_window * 2):]
-                    self.memory.chat_memory.messages = trimmed
-            return answer, [], "chat"
+            q_lower = question.lower()
+            if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
+                llm = get_llm(temperature=0.7)
+                chat_history = self.memory.chat_memory.messages
+                answer = _chat_directly(question, chat_history)
+                self.memory.chat_memory.add_user_message(question)
+                self.memory.chat_memory.add_ai_message(answer)
+                if self.memory_window:
+                    history = self.memory.chat_memory.messages
+                    if len(history) > self.memory_window * 2:
+                        trimmed = history[-(self.memory_window * 2):]
+                        self.memory.chat_memory.messages = trimmed
+                return answer, [], "chat"
+
+        if max_score < CHAT_DOMAIN_THRESHOLD:
+            q_lower = question.lower()
+            if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
+                llm = get_llm(temperature=0.7)
+                chat_history = self.memory.chat_memory.messages
+                answer = _chat_directly(question, chat_history)
+                self.memory.chat_memory.add_user_message(question)
+                self.memory.chat_memory.add_ai_message(answer)
+                if self.memory_window:
+                    history = self.memory.chat_memory.messages
+                    if len(history) > self.memory_window * 2:
+                        trimmed = history[-(self.memory_window * 2):]
+                        self.memory.chat_memory.messages = trimmed
+                return answer, [], "chat"
 
         llm = get_llm()
         chat_history = self.memory.chat_memory.messages
