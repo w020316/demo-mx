@@ -3,6 +3,7 @@ import json
 import time
 import math
 import tempfile
+import difflib
 from collections import defaultdict
 from config import PROJECT_ROOT
 
@@ -55,20 +56,19 @@ def _save_json(filepath, data):
 def _wilson_score(positive, total):
     if total == 0:
         return 0.0
-    p = positive / total
-    n = total
+    p = (positive + 1) / (total + 2)
+    n = total + 2
     z = WILSON_Z
     denom = 1 + z * z / n
     center = p + z * z / (2 * n)
     spread = z * math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)
     return max(0.0, min(1.0, (center - spread) / denom))
 
+DEDUP_THRESHOLD = 0.65
+
 
 def _question_similarity(q1, q2):
-    s1, s2 = set(q1), set(q2)
-    if not s1 or not s2:
-        return 0.0
-    return len(s1 & s2) / len(s1 | s2)
+    return difflib.SequenceMatcher(None, q1.strip(), q2.strip()).ratio()
 
 
 def check_abuse(question, session_ratings_count):
@@ -237,8 +237,9 @@ def get_stats():
     }
 
 
-def get_recommendation():
-    stats = get_stats()
+def get_recommendation(stats=None):
+    if stats is None:
+        stats = get_stats()
     recommendations = []
 
     k_data = stats["by_k"]

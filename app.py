@@ -100,9 +100,9 @@ def _cached_qa_count():
     _, _, _, _, gqc, _, _ = _lazy_feedback()
     return gqc()
 
-def _cached_rec():
+def _cached_rec(stats=None):
     _, _, gr, _, _, _, _ = _lazy_feedback()
-    return gr()
+    return gr(stats)
 
 
 def render_sources(sources):
@@ -436,8 +436,8 @@ with st.sidebar:
 
     st.divider()
 
-    if stats["total"] > 0 or True:
-        rec_data = _cached_rec()
+    if stats["total"] > 0:
+        rec_data = _cached_rec(stats)
         with st.expander("🧬 自进化仪表盘", expanded=(stats["total"] > 0)):
             _render_dashboard(stats, rec_data)
     else:

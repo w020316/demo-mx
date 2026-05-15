@@ -125,16 +125,25 @@ def get_retriever(k=3, search_type="similarity", fetch_k=None, lambda_mult=0.5):
 def search_with_scores(question, k=3, search_type="similarity", fetch_k=None, lambda_mult=0.5):
     vectorstore = get_vectorstore()
     try:
-        raw_results = vectorstore.similarity_search_with_score(question, k=k)
+        if search_type == "mmr":
+            raw_results = vectorstore.max_marginal_relevance_search_with_score(
+                question, k=k, fetch_k=fetch_k or k * 5, lambda_mult=lambda_mult,
+            )
+        else:
+            raw_results = vectorstore.similarity_search_with_score(question, k=k)
         docs = []
         scores = []
-        for doc, distance in raw_results:
+        for item in raw_results:
+            if search_type == "mmr" and len(item) == 2:
+                doc, distance = item
+            else:
+                doc, distance = item
             docs.append(doc)
             similarity = 1.0 / (1.0 + distance)
             scores.append(similarity)
         return docs, scores
     except Exception:
-        return [], None
+        return [], []
 
 
 def get_llm(temperature=0):
@@ -167,14 +176,16 @@ def _condense_question(llm, question, chat_history_messages):
     if not chat_history_messages:
         return question
     history_text = ""
-    for msg in chat_history_messages:
+    for msg in chat_history_messages[-10:]:
+        content = str(msg.content).replace("{", "{{").replace("}", "}}")
         if isinstance(msg, HumanMessage):
-            history_text += f"用户: {msg.content}\n"
+            history_text += f"用户: {content}\n"
         elif isinstance(msg, AIMessage):
-            history_text += f"助手: {msg.content}\n"
+            history_text += f"助手: {content}\n"
     if not history_text.strip():
         return question
-    prompt = CONDENSE_TEMPLATE.format(chat_history=history_text, question=question)
+    safe_q = question.replace("{", "{{").replace("}", "}}")
+    prompt = CONDENSE_TEMPLATE.format(chat_history=history_text, question=safe_q)
     try:
         response = llm.invoke(prompt)
         condensed = response.content.strip()
@@ -256,22 +267,26 @@ def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="s
     docs, scores = search_with_scores(question, k=k, search_type=search_type,
                                       fetch_k=fetch_k, lambda_mult=lambda_mult)
 
-    effective_threshold = similarity_threshold if similarity_threshold and similarity_threshold > 0 else CHAT_FALLBACK_THRESHOLD
-
-    if not docs or scores is None or max(scores) < CHAT_FALLBACK_THRESHOLD:
+    if not docs or scores is None or not scores:
         answer = _chat_directly(question)
         return answer, [], "chat"
 
-    if similarity_threshold and similarity_threshold > 0 and max(scores) < similarity_threshold:
-        max_s = max(scores) if scores else 0
-        reject_msg = (
-            f"⚠️ 根据提供的文档内容，无法回答该问题。\n\n"
-            f"（检索到的文档片段与问题的最高相似度为 "
-            f"{max_s:.2f}，"
-            f"低于设定阈值 {similarity_threshold}）\n\n"
-            f"建议您尝试换个方式提问，或确认文档中是否包含相关信息。"
-        )
-        return reject_msg, [], "reject"
+    max_score = max(scores)
+
+    if similarity_threshold and similarity_threshold > 0:
+        if max_score < similarity_threshold:
+            reject_msg = (
+                f"⚠️ 根据提供的文档内容，无法回答该问题。\n\n"
+                f"（检索到的文档片段与问题的最高相似度为 "
+                f"{max_score:.2f}，"
+                f"低于设定阈值 {similarity_threshold}）\n\n"
+                f"建议您尝试换个方式提问，或确认文档中是否包含相关信息。"
+            )
+            return reject_msg, [], "reject"
+
+    if max_score < CHAT_FALLBACK_THRESHOLD:
+        answer = _chat_directly(question)
+        return answer, [], "chat"
 
     qa_chain = get_qa_chain(k=k, prompt_mode=prompt_mode, search_type=search_type,
                             fetch_k=fetch_k, lambda_mult=lambda_mult)
@@ -338,7 +353,7 @@ class ConversationManager:
             fetch_k=self.fetch_k, lambda_mult=self.lambda_mult,
         )
 
-        if not docs or scores is None or max(scores) < CHAT_FALLBACK_THRESHOLD:
+        if not docs or scores is None or not scores:
             llm = get_llm(temperature=0.7)
             chat_history = self.memory.chat_memory.messages
             answer = _chat_directly(question, chat_history)
@@ -351,8 +366,10 @@ class ConversationManager:
                     self.memory.chat_memory.messages = trimmed
             return answer, [], "chat"
 
+        max_score = max(scores)
+
         if self.similarity_threshold is not None and self.similarity_threshold > 0:
-            if max(scores) < self.similarity_threshold:
+            if max_score < self.similarity_threshold:
                 max_s = max(scores) if scores else 0
                 reject_msg = (
                     f"⚠️ 根据提供的文档内容，无法回答该问题。\n\n"
@@ -361,7 +378,22 @@ class ConversationManager:
                     f"低于设定阈值 {self.similarity_threshold}）\n\n"
                     f"建议您尝试换个方式提问，或确认文档中是否包含相关信息。"
                 )
+                self.memory.chat_memory.add_user_message(question)
+                self.memory.chat_memory.add_ai_message(reject_msg)
                 return reject_msg, [], "reject"
+
+        if max_score < CHAT_FALLBACK_THRESHOLD:
+            llm = get_llm(temperature=0.7)
+            chat_history = self.memory.chat_memory.messages
+            answer = _chat_directly(question, chat_history)
+            self.memory.chat_memory.add_user_message(question)
+            self.memory.chat_memory.add_ai_message(answer)
+            if self.memory_window:
+                history = self.memory.chat_memory.messages
+                if len(history) > self.memory_window * 2:
+                    trimmed = history[-(self.memory_window * 2):]
+                    self.memory.chat_memory.messages = trimmed
+            return answer, [], "chat"
 
         llm = get_llm()
         chat_history = self.memory.chat_memory.messages
@@ -484,7 +516,7 @@ def cli_qa():
             continue
 
         try:
-            answer, sources = conv_mgr.ask(question)
+            answer, sources, mode = conv_mgr.ask(question)
             print(f"\n回答: {answer}")
             if sources:
                 print(f"\n来源文档:")
