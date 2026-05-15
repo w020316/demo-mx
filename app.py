@@ -173,7 +173,7 @@ def render_feedback(idx, question, answer):
     c1, c2, c3 = st.columns([1, 1, 6])
     with c1:
         if st.button("👍 有帮助", key=f"p_{idx}", help="标记此回答有帮助"):
-            _, fb_check, _, _, _, _, _ = _lazy_feedback()
+            _, _, _, fb_check, _, _, _ = _lazy_feedback()
             allowed, msg = fb_check(question, st.session_state.session_ratings_count)
             if not allowed:
                 st.session_state._fb_err = msg; st.rerun()
@@ -190,7 +190,7 @@ def render_feedback(idx, question, answer):
                 _invalidate_cache(); st.rerun()
     with c2:
         if st.button("👎 无帮助", key=f"n_{idx}", help="标记此回答无帮助"):
-            _, fb_check, _, _, _, _, _ = _lazy_feedback()
+            _, _, _, fb_check, _, _, _ = _lazy_feedback()
             allowed, msg = fb_check(question, st.session_state.session_ratings_count)
             if not allowed:
                 st.session_state._fb_err = msg; st.rerun()
@@ -341,7 +341,7 @@ def _render_dashboard(stats, rec_data):
             if by_reason:
                 st.markdown("---")
                 st.markdown("**👎 差评原因分布**")
-                _, _, _, _, neg_reasons_fn = _lazy_feedback()
+                _, _, _, _, _, neg_reasons_fn, _ = _lazy_feedback()
                 rmap = neg_reasons_fn()
                 r_labels = [rmap.get(r, r) for r in by_reason.keys()]
                 r_counts = list(by_reason.values())
