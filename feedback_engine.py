@@ -374,6 +374,8 @@ def export_qa_pairs_to_docs():
     from config import DATA_DIR
     export_path = os.path.join(DATA_DIR, "用户反馈问答对.md")
 
+    os.makedirs(DATA_DIR, exist_ok=True)
+
     lines = [
         "# MyLibrary RAG 用户反馈问答对（自进化知识库）\n",
         f"> 自动生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
