@@ -129,7 +129,15 @@ def render_feedback(idx, question, answer):
     agiven = st.session_state.feedback_given.get(idx)
     if agiven is not None and agiven != "__pending_reason__":
         color, icon, label = ("#16a34a","✅","有帮助") if agiven >= 1 else ("#dc2626","👎","无帮助")
-        st.markdown(f'<span style="color:{color};font-size:.83rem;">{icon} 已标记为{label}</span>', unsafe_allow_html=True)
+        c_f1, c_f2 = st.columns([3, 1])
+        with c_f1:
+            st.markdown(f'<span style="color:{color};font-size:.83rem;">{icon} 已标记为{label}</span>', unsafe_allow_html=True)
+        with c_f2:
+            if st.button("取消", key=f"fc_{idx}", use_container_width=True):
+                del st.session_state.feedback_given[idx]
+                if st.session_state.session_ratings_count > 0:
+                    st.session_state.session_ratings_count -= 1
+                _invalidate_cache(); st.rerun()
         return
 
     if agiven == "__pending_reason__":
