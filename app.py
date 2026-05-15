@@ -163,8 +163,14 @@ def _cached_vs():
 
 
 def _cached_stats():
-    _, gs, _, _, _, _, _ = _lazy_feedback()
-    return gs()
+    try:
+        _, gs, _, _, _, _, _ = _lazy_feedback()
+        result = gs()
+        if not isinstance(result, dict):
+            return {}
+        return result
+    except Exception as e:
+        return {}
 
 def _cached_qa_count():
     _, _, _, _, gqc, _, _ = _lazy_feedback()
@@ -291,6 +297,10 @@ def _apply_recommendation(rec):
 
 
 def _render_dashboard(stats, rec_data):
+    if not isinstance(stats, dict):
+        stats = {}
+    if not isinstance(rec_data, dict):
+        rec_data = {}
     tab1, tab2, tab3, tab4 = st.tabs(["📊 概览", "📈 趋势", "🔧 参数分析", "⚙️ 导出"])
 
     with tab1:
@@ -307,7 +317,7 @@ def _render_dashboard(stats, rec_data):
 
         mc1, mc2, mc3 = st.columns(3)
         with mc1:
-            st.metric("总反馈数", stats["total"], delta=None)
+            st.metric("总反馈数", stats.get("total", 0), delta=None)
         with mc2:
             delta_color = "normal" if stats.get("positive_rate", 0) >= 50 else "inverse"
             st.metric("好评率", f"{stats.get('positive_rate', 0):.1f}%", f"{stats.get('positive', 0)}👍 / {stats.get('negative', 0)}👎", delta_color=delta_color)
@@ -495,18 +505,19 @@ with st.sidebar:
     st.divider()
 
     vs = _cached_vs()
-    stats = _cached_stats()
+    stats_raw = _cached_stats()
+    stats = stats_raw if isinstance(stats_raw, dict) else {}
 
     st.markdown("#### 📊 数据状态")
     sc1, sc2 = st.columns(2)
     with sc1:
-        st.metric("向量片段", vs["count"], delta=None, delta_color="off")
+        st.metric("向量片段", vs.get("count", 0), delta=None, delta_color="off")
     with sc2:
-        if stats["total"] > 0:
-            st.metric("反馈数", stats["total"], f"{stats['positive_rate']}% 👍", delta_color="normal" if stats['positive_rate']>=50 else "inverse")
+        if stats.get("total", 0) > 0:
+            st.metric("反馈数", stats.get("total", 0), f"{stats.get('positive_rate', 0)}% 👍", delta_color="normal" if stats.get('positive_rate', 0)>=50 else "inverse")
 
-    if vs["files"]:
-        with st.expander(f"📄 已加载文档（{len(vs['files'])} 个）"):
+    if vs.get("files"):
+        with st.expander(f"📄 已加载文档（{len(vs.get('files', []))} 个）"):
             for f in vs["files"]:
                 ext = f.rsplit(".", 1)[-1].lower() if "." in f else ""
                 bc = f"badge-{ext}" if ext in ("pdf","txt","md") else ""
@@ -514,9 +525,9 @@ with st.sidebar:
 
     st.divider()
 
-    if stats["total"] > 0:
+    if stats.get("total", 0) > 0:
         rec_data = _cached_rec(stats)
-        with st.expander("🧬 自进化仪表盘", expanded=(stats["total"] > 0)):
+        with st.expander("🧬 自进化仪表盘", expanded=(stats.get("total", 0) > 0)):
             _render_dashboard(stats, rec_data)
     else:
         st.caption("💡 回答问题后点击 👍/👎 开始收集反馈")
@@ -532,7 +543,7 @@ with st.sidebar:
 st.title("📚 MyLibrary RAG 智能文档问答")
 st.caption("基于 RAG 技术的本地知识库问答系统 · 支持 Python / LangChain 文档智能检索 · 自进化反馈引擎 v2.0")
 
-if vs["count"] == 0:
+if vs.get("count", 0) == 0:
     st.warning("⚠️ 向量数据库为空，请先运行 `python ingest.py` 导入文档")
     st.code("python ingest.py", language="bash")
     st.stop()
