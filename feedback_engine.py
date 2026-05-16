@@ -23,7 +23,6 @@ NEGATIVE_REASONS = {
 }
 
 WILSON_Z = 1.959964
-DEDUP_THRESHOLD = 0.85
 
 
 def _ensure_dir():
@@ -240,92 +239,94 @@ def get_stats():
 def get_recommendation(stats=None):
     if stats is None:
         stats = get_stats()
+    if not isinstance(stats, dict):
+        stats = {}
     recommendations = []
 
-    k_data = stats["by_k"]
+    k_data = stats.get("by_k", {})
     if k_data:
         ranked_k = sorted(
             k_data.items(),
-            key=lambda x: _wilson_score(x[1]["positive"], x[1]["total"]),
+            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
             reverse=True,
         )
         best = ranked_k[0]
-        ws = _wilson_score(best[1]["positive"], best[1]["total"])
-        if best[1]["total"] >= 1 and ws > 0.3:
-            conf = "high" if best[1]["total"] >= 5 else "medium"
+        ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
+        if best[1].get("total", 0) >= 1 and ws > 0.3:
+            conf = "high" if best[1].get("total", 0) >= 5 else "medium"
             recommendations.append({
                 "param": "k",
-                "value": int(best[0]) if best[0].isdigit() else best[0],
+                "value": int(best[0]) if str(best[0]).isdigit() else best[0],
                 "wilson_score": round(ws, 3),
                 "confidence": conf,
-                "raw_positive_rate": round(best[1]["positive"] / best[1]["total"], 2) if best[1]["total"] > 0 else 0,
-                "sample_size": best[1]["total"],
-                "reason": f"检索数量 k={best[0]} Wilson得分最高({ws:.0%})，基于{best[1]['total']}条反馈{'，置信度高' if conf=='high' else '，建议继续收集'}",
+                "raw_positive_rate": round(best[1].get("positive", 0) / best[1].get("total", 1), 2) if best[1].get("total", 0) > 0 else 0,
+                "sample_size": best[1].get("total", 0),
+                "reason": f"检索数量 k={best[0]} Wilson得分最高({ws:.0%})，基于{best[1].get('total', 0)}条反馈{'，置信度高' if conf=='high' else '，建议继续收集'}",
             })
 
-    thresh_data = stats["by_threshold"]
+    thresh_data = stats.get("by_threshold", {})
     if thresh_data:
         ranked_t = sorted(
             thresh_data.items(),
-            key=lambda x: _wilson_score(x[1]["positive"], x[1]["total"]),
+            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
             reverse=True,
         )
         best = ranked_t[0]
-        ws = _wilson_score(best[1]["positive"], best[1]["total"])
-        if best[1]["total"] >= 1 and ws > 0.3:
-            conf = "high" if best[1]["total"] >= 5 else "medium"
+        ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
+        if best[1].get("total", 0) >= 1 and ws > 0.3:
+            conf = "high" if best[1].get("total", 0) >= 5 else "medium"
             label = "关闭拒答阈值" if best[0] == "off" else f"阈值={best[0]}"
             recommendations.append({
                 "param": "similarity_threshold",
                 "value": None if best[0] == "off" else float(best[0]),
                 "wilson_score": round(ws, 3),
                 "confidence": conf,
-                "raw_positive_rate": round(best[1]["positive"] / best[1]["total"], 2) if best[1]["total"] > 0 else 0,
-                "sample_size": best[1]["total"],
-                "reason": f"{label}时Wilson得分最高({ws:.0%})，基于{best[1]['total']}条反馈",
+                "raw_positive_rate": round(best[1].get("positive", 0) / best[1].get("total", 1), 2) if best[1].get("total", 0) > 0 else 0,
+                "sample_size": best[1].get("total", 0),
+                "reason": f"{label}时Wilson得分最高({ws:.0%})，基于{best[1].get('total', 0)}条反馈",
             })
 
-    search_data = stats["by_search_type"]
+    search_data = stats.get("by_search_type", {})
     if search_data:
         ranked_s = sorted(
             search_data.items(),
-            key=lambda x: _wilson_score(x[1]["positive"], x[1]["total"]),
+            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
             reverse=True,
         )
         best = ranked_s[0]
-        ws = _wilson_score(best[1]["positive"], best[1]["total"])
-        if best[1]["total"] >= 1 and ws > 0.3:
-            conf = "high" if best[1]["total"] >= 5 else "medium"
+        ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
+        if best[1].get("total", 0) >= 1 and ws > 0.3:
+            conf = "high" if best[1].get("total", 0) >= 5 else "medium"
             label_map = {"similarity": "相似度检索", "mmr": "MMR多样性检索"}
             recommendations.append({
                 "param": "search_type",
                 "value": best[0],
                 "wilson_score": round(ws, 3),
                 "confidence": conf,
-                "raw_positive_rate": round(best[1]["positive"] / best[1]["total"], 2) if best[1]["total"] > 0 else 0,
-                "sample_size": best[1]["total"],
-                "reason": f"{label_map.get(best[0], best[0])}Wilson得分更高({ws:.0%})，基于{best[1]['total']}条反馈",
+                "raw_positive_rate": round(best[1].get("positive", 0) / best[1].get("total", 1), 2) if best[1].get("total", 0) > 0 else 0,
+                "sample_size": best[1].get("total", 0),
+                "reason": f"{label_map.get(best[0], best[0])}Wilson得分更高({ws:.0%})，基于{best[1].get('total', 0)}条反馈",
             })
 
-    prompt_data = stats["by_prompt_mode"]
+    prompt_data = stats.get("by_prompt_mode", {})
     if prompt_data:
         ranked_p = sorted(
             prompt_data.items(),
-            key=lambda x: _wilson_score(x[1]["positive"], x[1]["total"]),
+            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
             reverse=True,
         )
         best = ranked_p[0]
-        ws = _wilson_score(best[1]["positive"], best[1]["total"])
-        if best[1]["total"] >= 1 and ws > 0.3:
-            conf = "high" if best[1]["total"] >= 5 else "medium"
+        ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
+        if best[1].get("total", 0) >= 1 and ws > 0.3:
+            conf = "high" if best[1].get("total", 0) >= 5 else "medium"
             recommendations.append({
                 "param": "prompt_mode",
                 "value": best[0],
                 "wilson_score": round(ws, 3),
                 "confidence": conf,
-                "raw_positive_rate": round(best[1]["positive"] / best[1]["total"], 2) if best[1]["total"] > 0 else 0,
-                "sample_size": best[1]["total"],
-                "reason": f"提示词模式'{best[0]}'Wilson得分最高({ws:.0%})，基于{best[1]['total']}条反馈",
+                "raw_positive_rate": round(best[1].get("positive", 0) / best[1].get("total", 1), 2) if best[1].get("total", 0) > 0 else 0,
+                "sample_size": best[1].get("total", 0),
+                "reason": f"提示词模式'{best[0]}'Wilson得分最高({ws:.0%})，基于{best[1].get('total', 0)}条反馈",
             })
 
     insights = []
@@ -347,7 +348,7 @@ def get_recommendation(stats=None):
             insights.append(f"差评主因：'{label}'占{pct}%（{count}/{total_neg}条）")
 
     if not insights:
-        if stats["total"] < 5:
+        if stats.get("total", 0) < 5:
             insights.append("反馈数据较少，继续使用后可获得更精准的分析洞察")
         else:
             insights.append("各参数组合表现稳定，系统运行健康")
@@ -356,8 +357,8 @@ def get_recommendation(stats=None):
         "recommendations": recommendations,
         "health_score": stats.get("health_score", 0),
         "insights": insights,
-        "has_data": stats["total"] >= 3,
-        "data_summary": f"共 {stats['total']} 条反馈 · 好评率 {stats['positive_rate']}%",
+        "has_data": stats.get("total", 0) >= 3,
+        "data_summary": f"共 {stats.get('total', 0)} 条反馈 · 好评率 {stats.get('positive_rate', 0)}%",
     }
 
 

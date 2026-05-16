@@ -177,8 +177,14 @@ def _cached_qa_count():
     return gqc()
 
 def _cached_rec(stats=None):
-    _, _, gr, _, _, _, _ = _lazy_feedback()
-    return gr(stats)
+    try:
+        _, _, gr, _, _, _, _ = _lazy_feedback()
+        result = gr(stats)
+        if not isinstance(result, dict):
+            return {}
+        return result
+    except Exception as e:
+        return {}
 
 
 def render_sources(sources):
@@ -327,7 +333,7 @@ def _render_dashboard(stats, rec_data):
 
         if rec_data.get("recommendations"):
             st.markdown("#### 🔝 推荐参数（一键应用）")
-            for rec in rec_data["recommendations"]:
+            for rec in rec_data.get("recommendations", []):
                 conf_cls = "high-conf" if rec.get("confidence") == "high" else "med-conf"
                 conf_tag = "高置信" if rec.get("confidence") == "high" else "收集中"
                 param_labels = {
@@ -359,7 +365,7 @@ def _render_dashboard(stats, rec_data):
 
         if rec_data.get("insights"):
             st.markdown("#### 💡 智能洞察")
-            for ins in rec_data["insights"]:
+            for ins in rec_data.get("insights", []):
                 st.markdown(f'<div class="insight-item">• {ins}</div>', unsafe_allow_html=True)
 
     with tab2:
