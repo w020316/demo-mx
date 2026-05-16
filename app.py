@@ -200,7 +200,8 @@ def render_sources(sources):
             ext = s.get("file_type", "").lower()
             bc = f"badge-{ext}" if ext in ("pdf","txt","md") else ""
             st.markdown(f'<span class="source-badge {bc}">{ext.upper()}</span> <b>{s["source_file"]}</b> — 第{s["page"]+1}页', unsafe_allow_html=True)
-            st.markdown(f"> {s['content'][:280].replace(chr(10),'  \\n> ')}")
+            content_preview = s.get('content', '')[:280].replace(chr(10), '  \n> ')
+            st.markdown(f"> {content_preview}")
             st.divider()
 
 

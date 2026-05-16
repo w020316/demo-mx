@@ -1,0 +1,27 @@
+﻿python.exe : 2026-05-16 12:12:59.286 WARNING streamlit.config: 
+At line:1 char:29
++ ... ibrary-rag; & "C:\Users\86181\AppData\Local\Programs\Python\Python310 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-05-16 12:1...eamlit.config: :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Warning: the config option 'server.enableCORS=false' is not compatible with
+'server.enableXsrfProtection=true'.
+As a result, 'server.enableCORS' is being overridden to 'true'.
+
+More information:
+In order to protect against CSRF attacks, we send a cookie with each request.
+To do so, we must specify allowable origins, which places a restriction on
+cross-origin resource sharing.
+
+If cross origin resource sharing is required, please disable server.enableXsrfProtection.
+            
+
+      Welcome to Streamlit!
+
+      If you'd like to receive helpful onboarding emails, news, offers, promotions,
+      and the occasional swag, please enter your email address below. Otherwise,
+      leave this field blank.
+
+2026-05-16 12:12:59.301 ERROR   streamlit.runtime.credentials: 
+      Email: [0m
