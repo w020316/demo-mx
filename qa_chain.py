@@ -189,7 +189,7 @@ def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="s
         search_type=search_type, fetch_k=fetch_k, lambda_mult=lambda_mult,
     )
 
-    if _is_rag_empty_answer(rag_answer):
+    if _is_rag_empty_answer(rag_answer) and max_score < 0.55:
         answer = chat_directly(question)
         return answer, [], "chat"
 
