@@ -76,7 +76,7 @@ st.html("""
   else{doTranslate();obs.observe(document.body,{childList:true,subtree:true});}
 })();
 </script>
-""", height=0)
+""")
 
 
 def _lazy_qa_chain():
