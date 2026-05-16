@@ -39,9 +39,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-import streamlit.components.v1 as components
-
-components.html("""
+st.html("""
 <script>
 (function(){
   var T = {
@@ -170,7 +168,7 @@ def render_feedback(idx, question, answer):
         with c_f1:
             st.markdown(f'<span style="color:{color};font-size:.83rem;">{icon} 已标记为{label}</span>', unsafe_allow_html=True)
         with c_f2:
-            if st.button("取消", key=f"fc_{idx}", use_container_width=True):
+            if st.button("取消", key=f"fc_{idx}", width="stretch"):
                 del st.session_state.feedback_given[idx]
                 if st.session_state.session_ratings_count > 0:
                     st.session_state.session_ratings_count -= 1
@@ -194,7 +192,7 @@ def render_feedback(idx, question, answer):
                 label_visibility="collapsed",
             )
         with cols_r[1]:
-            if st.button("提交", key=f"rsb_{idx}", use_container_width=True):
+            if st.button("提交", key=f"rsb_{idx}", width="stretch"):
                 chosen = None
                 if reason != "跳过":
                     for k, v in reasons.items():
@@ -213,7 +211,7 @@ def render_feedback(idx, question, answer):
                 _invalidate_cache()
                 st.rerun()
         with cols_r[2]:
-            if st.button("取消", key=f"rsc_{idx}", use_container_width=True):
+            if st.button("取消", key=f"rsc_{idx}", width="stretch"):
                 st.session_state.feedback_given[idx] = None
                 _invalidate_cache()
                 st.rerun()
@@ -328,7 +326,7 @@ def _render_dashboard(stats, rec_data):
                                 unsafe_allow_html=True,
                             )
                         with rc2:
-                            if st.button("✨ 应用", key=f"app_{rec.get('param', '')}", use_container_width=True):
+                            if st.button("✨ 应用", key=f"app_{rec.get('param', '')}", width="stretch"):
                                 _apply_recommendation(rec)
                                 st.rerun()
                 else:
@@ -358,11 +356,11 @@ def _render_dashboard(stats, rec_data):
                             df_data["时间段"].append(t.get("bucket", ""))
                             df_data["反馈数"].append(t.get("total", 0))
                             df_data["好评率(%)"].append(t.get("rate") if t.get("rate") is not None else 0)
-                        st.dataframe(df_data, use_container_width=True, hide_index=True)
+                        st.dataframe(df_data, width="stretch", hide_index=True)
                         rates_only = [t.get("rate") for t in active_buckets if t.get("rate") is not None]
                         if rates_only:
                             chart_data = {"好评率": rates_only}
-                            st.line_chart(chart_data, height=200, use_container_width=True)
+                            st.line_chart(chart_data, height=200, width="stretch")
                     else:
                         st.caption("需要更多时间跨度的数据来绘制趋势图（至少2个时间点有数据）")
                 else:
@@ -387,7 +385,7 @@ def _render_dashboard(stats, rec_data):
                             st.markdown("**检索数量 k**")
                             k_keys = [k for k in by_k.keys() if isinstance(by_k.get(k), dict)]
                             k_df = {"k值": k_keys, "总数": [by_k[k].get("total", 0) for k in k_keys], "好评数": [by_k[k].get("positive", 0) for k in k_keys]}
-                            st.dataframe(k_df, use_container_width=True, hide_index=True)
+                            st.dataframe(k_df, width="stretch", hide_index=True)
                             k_rates = {k: round(by_k[k].get("positive", 0) / max(by_k[k].get("total", 1), 1) * 100, 1) if by_k[k].get("total", 0) > 0 else 0 for k in k_keys}
                             if k_rates:
                                 st.bar_chart(k_rates, height=150, horizontal=False)
@@ -397,7 +395,7 @@ def _render_dashboard(stats, rec_data):
                             t_labels = {"off": "关闭"}
                             t_keys = [t for t in by_thresh.keys() if isinstance(by_thresh.get(t), dict)]
                             t_df = {"阈值": [t_labels.get(t, t) for t in t_keys], "总数": [by_thresh[t].get("total", 0) for t in t_keys], "好评数": [by_thresh[t].get("positive", 0) for t in t_keys]}
-                            st.dataframe(t_df, use_container_width=True, hide_index=True)
+                            st.dataframe(t_df, width="stretch", hide_index=True)
                             t_rates = {t_labels.get(t, t): round(by_thresh[t].get("positive", 0) / max(by_thresh[t].get("total", 1), 1) * 100, 1) if by_thresh[t].get("total", 0) > 0 else 0 for t in t_keys}
                             if t_rates:
                                 st.bar_chart(t_rates, height=150, horizontal=False)
@@ -408,7 +406,7 @@ def _render_dashboard(stats, rec_data):
                             s_labels = {"similarity": "相似度", "mmr": "MMR多样性"}
                             s_keys = [s for s in by_search.keys() if isinstance(by_search.get(s), dict)]
                             s_df = {"策略": [s_labels.get(s, s) for s in s_keys], "总数": [by_search[s].get("total", 0) for s in s_keys], "好评数": [by_search[s].get("positive", 0) for s in s_keys]}
-                            st.dataframe(s_df, use_container_width=True, hide_index=True)
+                            st.dataframe(s_df, width="stretch", hide_index=True)
                             s_rates = {s_labels.get(s, s): round(by_search[s].get("positive", 0) / max(by_search[s].get("total", 1), 1) * 100, 1) if by_search[s].get("total", 0) > 0 else 0 for s in s_keys}
                             if s_rates:
                                 st.bar_chart(s_rates, height=150, horizontal=False)
@@ -417,7 +415,7 @@ def _render_dashboard(stats, rec_data):
                             st.markdown("**提示词模式**")
                             p_keys = [p for p in by_prompt.keys() if isinstance(by_prompt.get(p), dict)]
                             p_df = {"模式": p_keys, "总数": [by_prompt[p].get("total", 0) for p in p_keys], "好评数": [by_prompt[p].get("positive", 0) for p in p_keys]}
-                            st.dataframe(p_df, use_container_width=True, hide_index=True)
+                            st.dataframe(p_df, width="stretch", hide_index=True)
                             p_rates = {p[:10]: round(by_prompt[p].get("positive", 0) / max(by_prompt[p].get("total", 1), 1) * 100, 1) if by_prompt[p].get("total", 0) > 0 else 0 for p in p_keys}
                             if p_rates:
                                 st.bar_chart(p_rates, height=150, horizontal=False)
@@ -432,7 +430,7 @@ def _render_dashboard(stats, rec_data):
                         r_total = sum(r_counts)
                         r_pcts = [round(c / r_total * 100, 1) if r_total > 0 else 0 for c in r_counts]
                         reason_df = {"原因": r_labels, "数量": r_counts, "占比(%)": r_pcts}
-                        st.dataframe(reason_df, use_container_width=True, hide_index=True)
+                        st.dataframe(reason_df, width="stretch", hide_index=True)
                         r_chart_data = dict(zip(r_labels, r_counts))
                         if r_chart_data:
                             st.bar_chart(r_chart_data, height=120, horizontal=False)
@@ -451,7 +449,7 @@ def _render_dashboard(stats, rec_data):
                     st.info("这些问答对来自用户好评，可导出后通过 `python ingest.py --incremental` 补充到知识库，实现自增长")
                     col_e1, col_e2 = st.columns(2)
                     with col_e1:
-                        if st.button("📤 导出为 Markdown", use_container_width=True, type="primary"):
+                        if st.button("📤 导出为 Markdown", width="stretch", type="primary"):
                             _, _, _, _, _, ep_fn, _ = _lazy_feedback()
                             count = ep_fn()
                             if count > 0:
@@ -541,7 +539,7 @@ with st.sidebar:
         st.caption("💡 回答问题后点击 👍/👎 开始收集反馈")
 
     st.divider()
-    if st.button("🗑️ 清空对话", use_container_width=True):
+    if st.button("🗑️ 清空对话", width="stretch"):
         st.session_state.messages = []
         if "conv_mgr" in st.session_state:
             st.session_state.conv_mgr.reset()
@@ -604,7 +602,7 @@ if not st.session_state.messages:
     """, unsafe_allow_html=True)
     cols = st.columns(len(suggestions))
     for i, s in enumerate(suggestions):
-        if cols[i].button(s, key=f"s_{i}", use_container_width=True):
+        if cols[i].button(s, key=f"s_{i}", width="stretch"):
             st.session_state._pq = s
             st.rerun()
 
