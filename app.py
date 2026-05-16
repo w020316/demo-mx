@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="MyLibrary RAG",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -21,12 +21,10 @@ st.markdown("""
 .welcome-box { text-align:center; padding:2rem 1.2rem; background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%); border-radius:14px; margin:1rem 0; border:1px solid #e2e8f0; }
 .welcome-box h2 { font-size:1.35rem; color:#1e293b; margin-bottom:.4rem; }
 .welcome-box p { color:#64748b; font-size:.9rem; line-height:1.65; }
-.fb-btn:hover { transform:scale(1.04); transition:transform .15s; }
 .mode-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; margin-left:6px; vertical-align:middle; }
 .mode-rag { background:#dbeafe; color:#1d4ed8; }
 .mode-chat { background:#fef3c7; color:#b45309; }
 .mode-reject { background:#fee2e2; color:#dc2626; }
-
 .health-gauge { text-align:center; padding:12px; border-radius:12px; margin:8px 0; }
 .health-excellent { background:linear-gradient(135deg,#dcfce7,#bbf7d0); border:1.5px solid #22c55e; }
 .health-good { background:linear-gradient(135deg,#fef9c3,#fef08a); border:1.5px solid #eab308; }
@@ -34,17 +32,10 @@ st.markdown("""
 .health-poor { background:linear-gradient(135deg,#fee2e2,#fecaca); border:1.5px solid #ef4444; }
 .health-score { font-size:2rem; font-weight:800; line-height:1; }
 .health-label { font-size:.75rem; margin-top:4px; opacity:0.85; }
-
 .rec-card { background:#f8fafc; border-left:3px solid #3b82f6; padding:10px 12px; border-radius:0 8px 8px 0; margin:6px 0; font-size:.82rem; }
 .rec-card.high-conf { border-left-color:#22c55e; background:#f0fdf4; }
 .rec-card.med-conf { border-left-color:#eab308; background:#fefce8; }
-
-.apply-btn { font-size:.72rem !important; padding:2px 10px !important; border-radius:6px !important; }
-
 .insight-item { padding:6px 10px; background:#f1f5f9; border-radius:6px; margin:4px 0; font-size:.8rem; color:#334155; line-height:1.5; }
-
-.tab-content { font-size:.82rem; }
-.metric-row { margin:8px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,18 +50,13 @@ components.html("""
     'Settings':'设置','About':'关于','Ask AI':'询问AI',
     'Light':'浅色','Dark':'深色','System':'跟随系统',
     'Built with Streamlit':'基于 Streamlit 构建',
-    'Deploy this app':'部署此应用',
-    'Share your app':'分享你的应用',
+    'Deploy this app':'部署此应用','Share your app':'分享你的应用',
     'Your app is running locally':'应用正在本地运行',
-    'Theme':'主题',
-    'Search':'搜索','Close':'关闭','Expand sidebar':'展开侧边栏',
-    'Collapse sidebar':'收起侧边栏',
+    'Theme':'主题','Search':'搜索','Close':'关闭',
+    'Expand sidebar':'展开侧边栏','Collapse sidebar':'收起侧边栏',
     'Not now':'以后再说','Continue':'继续',
-    'Developer menu':'开发者菜单',
-    'Screencast':'屏幕录制',
-    'Camera':'摄像头',
-    'Microphone':'麦克风',
-    'Screenshot':'截图',
+    'Developer menu':'开发者菜单','Screencast':'屏幕录制',
+    'Camera':'摄像头','Microphone':'麦克风','Screenshot':'截图',
   };
   function tr(el){
     if(!el||el.nodeType!==1)return;
@@ -79,41 +65,17 @@ components.html("""
       var n=el.childNodes[i];
       if(n.nodeType===3){
         var t=n.textContent;
-        for(var k in T){
-          if(t.indexOf(k)!==-1){
-            n.textContent=t.split(k).join(T[k]);
-          }
-        }
-      }else if(n.nodeType===1){
-        tr(n);
-      }
+        for(var k in T){if(t.indexOf(k)!==-1){n.textContent=t.split(k).join(T[k]);}}
+      }else if(n.nodeType===1){tr(n);}
     }
-    if(el.placeholder){
-      for(var k in T){if(el.placeholder.indexOf(k)!==-1)el.placeholder=el.placeholder.split(k).join(T[k]);}
-    }
-    if(el.title){
-      for(var k in T){if(el.title.indexOf(k)!==-1)el.title=el.title.split(k).join(T[k]);}
-    }
-    if(el.getAttribute('aria-label')){
-      var a=el.getAttribute('aria-label');
-      for(var k in T){if(a.indexOf(k)!==-1){a=a.split(k).join(T[k]);el.setAttribute('aria-label',a);}}
-    }
+    if(el.placeholder){for(var k in T){if(el.placeholder.indexOf(k)!==-1)el.placeholder=el.placeholder.split(k).join(T[k]);}}
+    if(el.title){for(var k in T){if(el.title.indexOf(k)!==-1)el.title=el.title.split(k).join(T[k]);}}
+    if(el.getAttribute('aria-label')){var a=el.getAttribute('aria-label');for(var k in T){if(a.indexOf(k)!==-1){a=a.split(k).join(T[k]);el.setAttribute('aria-label',a);}}}
   }
-  function doTranslate(){
-    tr(document.body);
-  }
-  var obs=new MutationObserver(function(muts){
-    var need=false;
-    for(var i=0;i<muts.length;i++){
-      if(muts[i].addedNodes.length>0){need=true;break;}
-    }
-    if(need)doTranslate();
-  });
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',function(){doTranslate();obs.observe(document.body,{childList:true,subtree:true});});
-  }else{
-    doTranslate();obs.observe(document.body,{childList:true,subtree:true});
-  }
+  function doTranslate(){tr(document.body);}
+  var obs=new MutationObserver(function(muts){var need=false;for(var i=0;i<muts.length;i++){if(muts[i].addedNodes.length>0){need=true;break;}}if(need)doTranslate();});
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){doTranslate();obs.observe(document.body,{childList:true,subtree:true});});}
+  else{doTranslate();obs.observe(document.body,{childList:true,subtree:true});}
 })();
 </script>
 """, height=0)
@@ -121,33 +83,19 @@ components.html("""
 
 def _lazy_qa_chain():
     from qa_chain import (
-        ask_question, ConversationManager,
-        get_vectorstore_info, PROMPT_TEMPLATES, PROMPT_LABELS,
+        ask_question, ConversationManager, PROMPT_TEMPLATES, PROMPT_LABELS,
     )
+    from vectorstore import get_vectorstore_info
     return ask_question, ConversationManager, get_vectorstore_info, PROMPT_TEMPLATES, PROMPT_LABELS
 
 
 def _lazy_feedback():
-    try:
-        from feedback_engine import (
-            record_rating, get_stats, get_recommendation,
-            check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
-            get_negative_reasons,
-        )
-        return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, get_negative_reasons
-    except ImportError:
-        from feedback_engine import (
-            record_rating, get_stats, get_recommendation,
-            check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
-        )
-        _fallback_neg_reasons = {
-            "inaccurate": "回答不准确",
-            "irrelevant": "来源与问题无关",
-            "incomplete": "回答不完整",
-            "format_bad": "格式/排版混乱",
-            "other": "其他原因",
-        }
-        return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, lambda: _fallback_neg_reasons
+    from feedback_engine import (
+        record_rating, get_stats, get_recommendation,
+        check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs,
+        get_negative_reasons,
+    )
+    return record_rating, get_stats, get_recommendation, check_abuse, get_qa_pairs_count, export_qa_pairs_to_docs, get_negative_reasons
 
 
 def _invalidate_cache():
@@ -162,6 +110,7 @@ def _cached_vs():
     return get_vi()
 
 
+@st.cache_data(ttl=30)
 def _cached_stats():
     try:
         _, gs, _, _, _, _, _ = _lazy_feedback()
@@ -169,21 +118,25 @@ def _cached_stats():
         if not isinstance(result, dict):
             return {}
         return result
-    except Exception as e:
+    except Exception:
         return {}
 
+
+@st.cache_data(ttl=60)
 def _cached_qa_count():
     _, _, _, _, gqc, _, _ = _lazy_feedback()
     return gqc()
 
-def _cached_rec(stats=None):
+
+@st.cache_data(ttl=60)
+def _cached_rec():
     try:
         _, _, gr, _, _, _, _ = _lazy_feedback()
-        result = gr(stats)
+        result = gr()
         if not isinstance(result, dict):
             return {}
         return result
-    except Exception as e:
+    except Exception:
         return {}
 
 
@@ -194,11 +147,12 @@ def render_sources(sources):
     for s in sources:
         k = f"{s['source_file']}-p{s['page']}"
         if k not in seen:
-            seen.add(k); uniq.append(s)
+            seen.add(k)
+            uniq.append(s)
     with st.expander(f"📎 来源（{len(uniq)} 条）"):
         for s in uniq:
             ext = s.get("file_type", "").lower()
-            bc = f"badge-{ext}" if ext in ("pdf","txt","md") else ""
+            bc = f"badge-{ext}" if ext in ("pdf", "txt", "md") else ""
             st.markdown(f'<span class="source-badge {bc}">{ext.upper()}</span> <b>{s["source_file"]}</b> — 第{s["page"]+1}页', unsafe_allow_html=True)
             content_preview = s.get('content', '')[:280].replace(chr(10), '  \n> ')
             st.markdown(f"> {content_preview}")
@@ -211,7 +165,7 @@ def render_feedback(idx, question, answer):
 
     agiven = st.session_state.feedback_given.get(idx)
     if agiven is not None and agiven != "__pending_reason__":
-        color, icon, label = ("#16a34a","✅","有帮助") if agiven >= 1 else ("#dc2626","👎","无帮助")
+        color, icon, label = ("#16a34a", "✅", "有帮助") if agiven >= 1 else ("#dc2626", "👎", "无帮助")
         c_f1, c_f2 = st.columns([3, 1])
         with c_f1:
             st.markdown(f'<span style="color:{color};font-size:.83rem;">{icon} 已标记为{label}</span>', unsafe_allow_html=True)
@@ -220,7 +174,8 @@ def render_feedback(idx, question, answer):
                 del st.session_state.feedback_given[idx]
                 if st.session_state.session_ratings_count > 0:
                     st.session_state.session_ratings_count -= 1
-                _invalidate_cache(); st.rerun()
+                _invalidate_cache()
+                st.rerun()
         return
 
     if agiven == "__pending_reason__":
@@ -244,21 +199,24 @@ def render_feedback(idx, question, answer):
                 if reason != "跳过":
                     for k, v in reasons.items():
                         if v == reason:
-                            chosen = k; break
+                            chosen = k
+                            break
                 rr, _, _, _, _, _, _ = _lazy_feedback()
                 rr(question, answer, -1, {
-                    "k": st.session_state.get("_lk",3),
+                    "k": st.session_state.get("_lk", 3),
                     "similarity_threshold": st.session_state.get("_lt"),
-                    "search_type": st.session_state.get("_ls","similarity"),
-                    "prompt_mode": st.session_state.get("_lp","anti_hallucination"),
+                    "search_type": st.session_state.get("_ls", "similarity"),
+                    "prompt_mode": st.session_state.get("_lp", "anti_hallucination"),
                 }, reason=chosen)
                 st.session_state.feedback_given[idx] = -1
                 st.session_state.session_ratings_count += 1
-                _invalidate_cache(); st.rerun()
+                _invalidate_cache()
+                st.rerun()
         with cols_r[2]:
             if st.button("取消", key=f"rsc_{idx}", use_container_width=True):
                 st.session_state.feedback_given[idx] = None
-                _invalidate_cache(); st.rerun()
+                _invalidate_cache()
+                st.rerun()
         return
 
     c1, c2, c3 = st.columns([1, 1, 6])
@@ -267,24 +225,27 @@ def render_feedback(idx, question, answer):
             _, _, _, fb_check, _, _, _ = _lazy_feedback()
             allowed, msg = fb_check(question, st.session_state.session_ratings_count)
             if not allowed:
-                st.session_state._fb_err = msg; st.rerun()
+                st.session_state._fb_err = msg
+                st.rerun()
             else:
                 rr, _, _, _, _, _, _ = _lazy_feedback()
                 rr(question, answer, 1, {
-                    "k": st.session_state.get("_lk",3),
+                    "k": st.session_state.get("_lk", 3),
                     "similarity_threshold": st.session_state.get("_lt"),
-                    "search_type": st.session_state.get("_ls","similarity"),
-                    "prompt_mode": st.session_state.get("_lp","anti_hallucination"),
+                    "search_type": st.session_state.get("_ls", "similarity"),
+                    "prompt_mode": st.session_state.get("_lp", "anti_hallucination"),
                 })
                 st.session_state.feedback_given[idx] = 1
                 st.session_state.session_ratings_count += 1
-                _invalidate_cache(); st.rerun()
+                _invalidate_cache()
+                st.rerun()
     with c2:
         if st.button("👎 无帮助", key=f"n_{idx}", help="标记此回答无帮助"):
             _, _, _, fb_check, _, _, _ = _lazy_feedback()
             allowed, msg = fb_check(question, st.session_state.session_ratings_count)
             if not allowed:
-                st.session_state._fb_err = msg; st.rerun()
+                st.session_state._fb_err = msg
+                st.rerun()
             else:
                 st.session_state.feedback_given[idx] = "__pending_reason__"
                 st.rerun()
@@ -349,7 +310,7 @@ def _render_dashboard(stats, rec_data):
                         param_labels = {
                             "k": f'k={rec.get("value", "")}',
                             "similarity_threshold": f'阈值={"关闭" if rec.get("value") is None else rec.get("value", "")}',
-                            "search_type": {"similarity":"相似度检索","mmr":"MMR多样性"}.get(rec.get("value"), rec.get("value", "")),
+                            "search_type": {"similarity": "相似度检索", "mmr": "MMR多样性"}.get(rec.get("value"), rec.get("value", "")),
                             "prompt_mode": f'模式={str(rec.get("value", ""))[:8]}',
                         }
                         plabel = param_labels.get(rec.get("param"), rec.get("param", ""))
@@ -367,7 +328,7 @@ def _render_dashboard(stats, rec_data):
                                 unsafe_allow_html=True,
                             )
                         with rc2:
-                            if st.button("✨ 应用", key=f"app_{rec.get('param', '')}", use_container_width=True, **{"css_classes": ["apply-btn"]} if False else {}):
+                            if st.button("✨ 应用", key=f"app_{rec.get('param', '')}", use_container_width=True):
                                 _apply_recommendation(rec)
                                 st.rerun()
                 else:
@@ -390,9 +351,9 @@ def _render_dashboard(stats, rec_data):
                 if not isinstance(timeline, list):
                     timeline = []
                 if timeline:
-                    df_data = {"时间段": [], "反馈数": [], "好评率(%)": []}
                     active_buckets = [t for t in timeline if isinstance(t, dict) and t.get("total", 0) > 0]
                     if len(active_buckets) >= 2:
+                        df_data = {"时间段": [], "反馈数": [], "好评率(%)": []}
                         for t in active_buckets:
                             df_data["时间段"].append(t.get("bucket", ""))
                             df_data["反馈数"].append(t.get("total", 0))
@@ -401,7 +362,6 @@ def _render_dashboard(stats, rec_data):
                         rates_only = [t.get("rate") for t in active_buckets if t.get("rate") is not None]
                         if rates_only:
                             chart_data = {"好评率": rates_only}
-                            row_idx = list(range(len(rates_only)))
                             st.line_chart(chart_data, height=200, use_container_width=True)
                     else:
                         st.caption("需要更多时间跨度的数据来绘制趋势图（至少2个时间点有数据）")
@@ -412,22 +372,11 @@ def _render_dashboard(stats, rec_data):
 
         with tab3:
             try:
-                by_k = stats.get("by_k", {})
-                by_thresh = stats.get("by_threshold", {})
-                by_search = stats.get("by_search_type", {})
-                by_prompt = stats.get("by_prompt_mode", {})
-                by_reason = stats.get("by_reason", {})
-
-                if not isinstance(by_k, dict):
-                    by_k = {}
-                if not isinstance(by_thresh, dict):
-                    by_thresh = {}
-                if not isinstance(by_search, dict):
-                    by_search = {}
-                if not isinstance(by_prompt, dict):
-                    by_prompt = {}
-                if not isinstance(by_reason, dict):
-                    by_reason = {}
+                by_k = stats.get("by_k", {}) if isinstance(stats.get("by_k"), dict) else {}
+                by_thresh = stats.get("by_threshold", {}) if isinstance(stats.get("by_threshold"), dict) else {}
+                by_search = stats.get("by_search_type", {}) if isinstance(stats.get("by_search_type"), dict) else {}
+                by_prompt = stats.get("by_prompt_mode", {}) if isinstance(stats.get("by_prompt_mode"), dict) else {}
+                by_reason = stats.get("by_reason", {}) if isinstance(stats.get("by_reason"), dict) else {}
 
                 has_param_data = any([by_k, by_thresh, by_search, by_prompt])
                 if has_param_data:
@@ -439,8 +388,8 @@ def _render_dashboard(stats, rec_data):
                             k_keys = [k for k in by_k.keys() if isinstance(by_k.get(k), dict)]
                             k_df = {"k值": k_keys, "总数": [by_k[k].get("total", 0) for k in k_keys], "好评数": [by_k[k].get("positive", 0) for k in k_keys]}
                             st.dataframe(k_df, use_container_width=True, hide_index=True)
-                            k_rates = {k: round(by_k[k].get("positive", 0)/max(by_k[k].get("total", 1), 1)*100, 1) if by_k[k].get("total", 0) > 0 else 0 for k in k_keys}
-                            if isinstance(k_rates, dict) and k_rates:
+                            k_rates = {k: round(by_k[k].get("positive", 0) / max(by_k[k].get("total", 1), 1) * 100, 1) if by_k[k].get("total", 0) > 0 else 0 for k in k_keys}
+                            if k_rates:
                                 st.bar_chart(k_rates, height=150, horizontal=False)
 
                         if by_thresh:
@@ -449,8 +398,8 @@ def _render_dashboard(stats, rec_data):
                             t_keys = [t for t in by_thresh.keys() if isinstance(by_thresh.get(t), dict)]
                             t_df = {"阈值": [t_labels.get(t, t) for t in t_keys], "总数": [by_thresh[t].get("total", 0) for t in t_keys], "好评数": [by_thresh[t].get("positive", 0) for t in t_keys]}
                             st.dataframe(t_df, use_container_width=True, hide_index=True)
-                            t_rates = {t_labels.get(t, t): round(by_thresh[t].get("positive", 0)/max(by_thresh[t].get("total", 1), 1)*100, 1) if by_thresh[t].get("total", 0) > 0 else 0 for t in t_keys}
-                            if isinstance(t_rates, dict) and t_rates:
+                            t_rates = {t_labels.get(t, t): round(by_thresh[t].get("positive", 0) / max(by_thresh[t].get("total", 1), 1) * 100, 1) if by_thresh[t].get("total", 0) > 0 else 0 for t in t_keys}
+                            if t_rates:
                                 st.bar_chart(t_rates, height=150, horizontal=False)
 
                     with sc_b:
@@ -460,8 +409,8 @@ def _render_dashboard(stats, rec_data):
                             s_keys = [s for s in by_search.keys() if isinstance(by_search.get(s), dict)]
                             s_df = {"策略": [s_labels.get(s, s) for s in s_keys], "总数": [by_search[s].get("total", 0) for s in s_keys], "好评数": [by_search[s].get("positive", 0) for s in s_keys]}
                             st.dataframe(s_df, use_container_width=True, hide_index=True)
-                            s_rates = {s_labels.get(s, s): round(by_search[s].get("positive", 0)/max(by_search[s].get("total", 1), 1)*100, 1) if by_search[s].get("total", 0) > 0 else 0 for s in s_keys}
-                            if isinstance(s_rates, dict) and s_rates:
+                            s_rates = {s_labels.get(s, s): round(by_search[s].get("positive", 0) / max(by_search[s].get("total", 1), 1) * 100, 1) if by_search[s].get("total", 0) > 0 else 0 for s in s_keys}
+                            if s_rates:
                                 st.bar_chart(s_rates, height=150, horizontal=False)
 
                         if by_prompt:
@@ -469,23 +418,23 @@ def _render_dashboard(stats, rec_data):
                             p_keys = [p for p in by_prompt.keys() if isinstance(by_prompt.get(p), dict)]
                             p_df = {"模式": p_keys, "总数": [by_prompt[p].get("total", 0) for p in p_keys], "好评数": [by_prompt[p].get("positive", 0) for p in p_keys]}
                             st.dataframe(p_df, use_container_width=True, hide_index=True)
-                            p_rates = {p[:10]: round(by_prompt[p].get("positive", 0)/max(by_prompt[p].get("total", 1), 1)*100, 1) if by_prompt[p].get("total", 0) > 0 else 0 for p in p_keys}
-                            if isinstance(p_rates, dict) and p_rates:
+                            p_rates = {p[:10]: round(by_prompt[p].get("positive", 0) / max(by_prompt[p].get("total", 1), 1) * 100, 1) if by_prompt[p].get("total", 0) > 0 else 0 for p in p_keys}
+                            if p_rates:
                                 st.bar_chart(p_rates, height=150, horizontal=False)
 
                     if by_reason:
                         st.markdown("---")
                         st.markdown("**👎 差评原因分布**")
-                        _, _, _, _, _, neg_reasons_fn, _ = _lazy_feedback()
+                        _, _, _, _, _, _, neg_reasons_fn = _lazy_feedback()
                         rmap = neg_reasons_fn()
                         r_labels = [rmap.get(r, r) for r in by_reason.keys()]
                         r_counts = list(by_reason.values())
                         r_total = sum(r_counts)
-                        r_pcts = [round(c/r_total*100, 1) if r_total > 0 else 0 for c in r_counts]
+                        r_pcts = [round(c / r_total * 100, 1) if r_total > 0 else 0 for c in r_counts]
                         reason_df = {"原因": r_labels, "数量": r_counts, "占比(%)": r_pcts}
                         st.dataframe(reason_df, use_container_width=True, hide_index=True)
                         r_chart_data = dict(zip(r_labels, r_counts))
-                        if isinstance(r_chart_data, dict) and r_chart_data:
+                        if r_chart_data:
                             st.bar_chart(r_chart_data, height=120, horizontal=False)
                 else:
                     st.caption("切换不同参数组合使用系统后，此处将展示对比分析")
@@ -533,9 +482,9 @@ with st.sidebar:
     k = st.slider("**检索数量 k**", 1, 10, int(default_k), help="越大回答越详细")
 
     default_s = apply_s if apply_s else "similarity"
-    search_type = st.selectbox("**检索策略**", ["similarity","mmr"],
-                                 index=0 if default_s == "similarity" else 1,
-                                 format_func=lambda x: {"similarity":"相似度检索","mmr":"MMR多样性"}[x])
+    search_type = st.selectbox("**检索策略**", ["similarity", "mmr"],
+                               index=0 if default_s == "similarity" else 1,
+                               format_func=lambda x: {"similarity": "相似度检索", "mmr": "MMR多样性"}[x])
 
     _, _, _, _, PL = _lazy_qa_chain()
     prompt_keys = list(PL.keys())
@@ -573,19 +522,19 @@ with st.sidebar:
         st.metric("向量片段", vs.get("count", 0), delta=None, delta_color="off")
     with sc2:
         if stats.get("total", 0) > 0:
-            st.metric("反馈数", stats.get("total", 0), f"{stats.get('positive_rate', 0)}% 👍", delta_color="normal" if stats.get('positive_rate', 0)>=50 else "inverse")
+            st.metric("反馈数", stats.get("total", 0), f"{stats.get('positive_rate', 0)}% 👍", delta_color="normal" if stats.get('positive_rate', 0) >= 50 else "inverse")
 
     if vs.get("files"):
         with st.expander(f"📄 已加载文档（{len(vs.get('files', []))} 个）"):
             for f in vs["files"]:
                 ext = f.rsplit(".", 1)[-1].lower() if "." in f else ""
-                bc = f"badge-{ext}" if ext in ("pdf","txt","md") else ""
+                bc = f"badge-{ext}" if ext in ("pdf", "txt", "md") else ""
                 st.markdown(f'<span class="source-badge {bc}">{ext.upper()}</span> {f}', unsafe_allow_html=True)
 
     st.divider()
 
     if stats.get("total", 0) > 0:
-        rec_data = _cached_rec(stats)
+        rec_data = _cached_rec()
         with st.expander("🧬 自进化仪表盘", expanded=(stats.get("total", 0) > 0)):
             _render_dashboard(stats, rec_data)
     else:
@@ -639,11 +588,12 @@ for idx, msg in enumerate(st.session_state.messages):
             mode_labels = {"rag": "📚 RAG检索", "chat": "💬 自由对话", "reject": "⛔ 已拒答"}
             mode_cls = f"mode-{mode}"
             st.markdown(f'<span class="mode-badge {mode_cls}">{mode_labels.get(mode, mode)}</span>', unsafe_allow_html=True)
-            if msg.get("sources"): render_sources(msg["sources"])
-            render_feedback(idx, msg.get("_q",""), msg["content"])
+            if msg.get("sources"):
+                render_sources(msg["sources"])
+            render_feedback(idx, msg.get("_q", ""), msg["content"])
 
 if not st.session_state.messages:
-    suggestions = ["RAG技术的核心原理是什么？","LangChain框架有哪些主要组件？","Python在AI开发中有哪些应用？"]
+    suggestions = ["RAG技术的核心原理是什么？", "LangChain框架有哪些主要组件？", "Python在AI开发中有哪些应用？"]
     st.markdown(f"""
     <div class="welcome-box">
         <h2>👋 欢迎使用 MyLibrary RAG</h2>
@@ -655,7 +605,8 @@ if not st.session_state.messages:
     cols = st.columns(len(suggestions))
     for i, s in enumerate(suggestions):
         if cols[i].button(s, key=f"s_{i}", use_container_width=True):
-            st.session_state._pq = s; st.rerun()
+            st.session_state._pq = s
+            st.rerun()
 
 if "_pq" in st.session_state and st.session_state._pq:
     prompt = st.session_state._pq
@@ -667,30 +618,33 @@ else:
 
 if prompt:
     st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role":"user","content":prompt})
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant"):
         with st.spinner("🔍 思考中..."):
             try:
                 cm = st.session_state.conv_mgr
-                cm.k = k; cm.prompt_mode = prompt_mode; cm.search_type = search_type
-                cm.similarity_threshold = threshold_val; cm.memory_window = win_val
-                cm.fetch_k = mmr_fetch_k; cm.lambda_mult = mmr_lambda
-                cm._chain = None
+                cm.k = k
+                cm.prompt_mode = prompt_mode
+                cm.search_type = search_type
+                cm.similarity_threshold = threshold_val
+                cm.memory_window = win_val
+                cm.fetch_k = mmr_fetch_k
+                cm.lambda_mult = mmr_lambda
 
                 if enable_memory:
                     ans, src, mode = cm.ask(prompt)
                 else:
                     ans, src, mode = ask_qa(question=prompt, k=k, prompt_mode=prompt_mode,
-                                      search_type=search_type, similarity_threshold=threshold_val)
+                                            search_type=search_type, similarity_threshold=threshold_val)
 
                 st.markdown(ans)
                 if mode == "rag":
                     render_sources(src)
                 render_feedback(len(st.session_state.messages), prompt, ans)
 
-                st.session_state.messages.append({"role":"assistant","content":ans,"sources":src,"_q":prompt,"mode":mode})
+                st.session_state.messages.append({"role": "assistant", "content": ans, "sources": src, "_q": prompt, "mode": mode})
             except Exception as e:
                 err = f"⚠️ 出错: {e}"
                 st.error(err)
-                st.session_state.messages.append({"role":"assistant","content":err})
+                st.session_state.messages.append({"role": "assistant", "content": err})

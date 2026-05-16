@@ -1,17 +1,23 @@
 import os
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_community.vectorstores import Chroma
-from langchain_classic.chains import RetrievalQA
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.memory import ConversationBufferMemory
+import sys
+import re
+import logging
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pylibs"))
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
-from config import CHROMA_DIR, PROJECT_ROOT
-from embeddings import ChromaDefaultEmbeddings
+from config import (
+    CHAT_FALLBACK_THRESHOLD, CHAT_DOMAIN_THRESHOLD, DEFAULT_K,
+    DEFAULT_PROMPT_MODE, DEFAULT_SEARCH_TYPE,
+)
+from vectorstore import get_retriever, search_with_scores
+from llm import get_llm, chat_directly, condense_question
 
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT_TEMPLATE = """你是一个专业的图书管理员，请用严谨的学术风格回答问题。请根据以下上下文回答问题。如果上下文中没有包含回答该问题所需的信息，请直接回答"根据提供的文档内容，无法回答该问题"，不要编造或推测任何内容。
+ANTI_HALLUCINATION_TEMPLATE = """你是一个专业的图书管理员，请用严谨的学术风格回答问题。请根据以下上下文回答问题。如果上下文中没有包含回答该问题所需的信息，请直接回答"根据提供的文档内容，无法回答该问题"，不要编造或推测任何内容。
 
 上下文：
 {context}
@@ -20,14 +26,14 @@ DEFAULT_PROMPT_TEMPLATE = """你是一个专业的图书管理员，请用严谨
 
 回答："""
 
-SIMPLE_PROMPT_TEMPLATE = """请根据以下上下文回答问题：
+SIMPLE_TEMPLATE = """请根据以下上下文回答问题：
 {context}
 
 问题：{question}
 
 回答："""
 
-ACADEMIC_PROMPT_TEMPLATE = """你是一位严谨的学术图书管理员，擅长从文献中提取关键信息并进行综合分析。请基于以下参考资料回答问题，要求：
+ACADEMIC_TEMPLATE = """你是一位严谨的学术图书管理员，擅长从文献中提取关键信息并进行综合分析。请基于以下参考资料回答问题，要求：
 1. 回答需有据可依，引用相关文档内容
 2. 如果信息不足，明确指出并说明缺少什么
 3. 使用规范的学术语言，逻辑清晰
@@ -39,7 +45,7 @@ ACADEMIC_PROMPT_TEMPLATE = """你是一位严谨的学术图书管理员，擅�
 
 回答："""
 
-CROSS_DOC_PROMPT_TEMPLATE = """请基于以下来自多篇文档的参考资料，进行跨文档对比分析。要求：
+CROSS_DOC_TEMPLATE = """请基于以下来自多篇文档的参考资料，进行跨文档对比分析。要求：
 1. 指出不同文档中的相同观点和不同观点
 2. 综合多篇文档的信息给出完整回答
 3. 标注信息来源
@@ -51,20 +57,11 @@ CROSS_DOC_PROMPT_TEMPLATE = """请基于以下来自多篇文档的参考资料�
 
 跨文档分析："""
 
-CONDENSE_TEMPLATE = """根据以下对话历史和最新问题，将问题重写为一个独立的、完整的问题。
-
-对话历史：
-{chat_history}
-
-最新问题：{question}
-
-独立问题："""
-
 PROMPT_TEMPLATES = {
-    "anti_hallucination": DEFAULT_PROMPT_TEMPLATE,
-    "simple": SIMPLE_PROMPT_TEMPLATE,
-    "academic": ACADEMIC_PROMPT_TEMPLATE,
-    "cross_doc": CROSS_DOC_PROMPT_TEMPLATE,
+    "anti_hallucination": ANTI_HALLUCINATION_TEMPLATE,
+    "simple": SIMPLE_TEMPLATE,
+    "academic": ACADEMIC_TEMPLATE,
+    "cross_doc": CROSS_DOC_TEMPLATE,
 }
 
 PROMPT_LABELS = {
@@ -74,90 +71,32 @@ PROMPT_LABELS = {
     "cross_doc": "🔍 跨文档对比",
 }
 
-_embeddings_instance = None
+CHAT_PATTERNS = [
+    r"^(你好|您好|嗨|hi|hello|hey|早|早上好|下午好|晚上好)[\s!！?？,，。.]*$",
+    r"^(你是谁|你是什么|你叫什么|介绍一下[你自]你|你能做什|你能帮|你是干)",
+    r"^(谢谢|感谢|再见|拜拜|goodbye|bye)[\s!！?？]*$",
+    r"^(天气|讲个笑话|无聊|你好啊|在吗|有人吗)",
+    r"^[\s!！?？。，,]+$",
+]
+
+DOMAIN_KEYWORDS = {
+    "rag", "检索", "向量", "嵌入", "embedding", "langchain", "python",
+    "streamlit", "chromadb", "大模型", "llm", "提示词", "prompt",
+    "文档", "知识库", "分块", "chunk", "记忆", "memory", "chain",
+    "agent", "retriever", "transformer", "torch", "模型", "框架",
+    "组件", "api", "函数", "编程", "开发", "数据", "机器学习",
+    "深度学习", "nlp", "自然语言", "对话", "生成", "微调",
+}
+
+RAG_EMPTY_PATTERNS = [
+    "无法回答", "无法提供", "无法找到", "没有包含",
+    "文档内容中未", "上下文中没有", "提供的文档",
+    "知识库中没有", "检索到的文档", "根据提供的文档内容，无法",
+]
 
 
-def _get_embeddings():
-    global _embeddings_instance
-    if _embeddings_instance is None:
-        _embeddings_instance = ChromaDefaultEmbeddings()
-    return _embeddings_instance
-
-
-def get_vectorstore():
-    return Chroma(
-        persist_directory=CHROMA_DIR,
-        embedding_function=_get_embeddings(),
-    )
-
-
-def get_vectorstore_info():
-    try:
-        vs = get_vectorstore()
-        count = vs._collection.count()
-        metadatas = vs._collection.get(include=["metadatas"])["metadatas"]
-        files = set()
-        for m in metadatas:
-            if m and "source_file" in m:
-                files.add(m["source_file"])
-        return {"count": count, "files": sorted(files)}
-    except Exception:
-        return {"count": 0, "files": []}
-
-
-def get_retriever(k=3, search_type="similarity", fetch_k=None, lambda_mult=0.5):
-    vectorstore = get_vectorstore()
-    if search_type == "mmr":
-        return vectorstore.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-                "k": k,
-                "fetch_k": fetch_k or k * 5,
-                "lambda_mult": lambda_mult,
-            },
-        )
-    return vectorstore.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": k},
-    )
-
-
-def search_with_scores(question, k=3, search_type="similarity", fetch_k=None, lambda_mult=0.5):
-    vectorstore = get_vectorstore()
-    try:
-        if search_type == "mmr":
-            raw_results = vectorstore.max_marginal_relevance_search_with_score(
-                question, k=k, fetch_k=fetch_k or k * 5, lambda_mult=lambda_mult,
-            )
-        else:
-            raw_results = vectorstore.similarity_search_with_score(question, k=k)
-        docs = []
-        scores = []
-        for item in raw_results:
-            if search_type == "mmr" and len(item) == 2:
-                doc, distance = item
-            else:
-                doc, distance = item
-            docs.append(doc)
-            similarity = 1.0 / (1.0 + distance)
-            scores.append(similarity)
-        return docs, scores
-    except Exception:
-        return [], []
-
-
-def get_llm(temperature=0):
-    return ChatOpenAI(
-        model=os.getenv("MODEL_NAME", "deepseek-chat"),
-        temperature=temperature,
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
-        openai_api_base=os.getenv("OPENAI_BASE_URL"),
-    )
-
-
-def _build_prompt(prompt_mode):
-    template = PROMPT_TEMPLATES.get(prompt_mode, DEFAULT_PROMPT_TEMPLATE)
-    return PromptTemplate(template=template, input_variables=["context", "question"])
+def _format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
 
 
 def _extract_sources(source_docs):
@@ -172,107 +111,60 @@ def _extract_sources(source_docs):
     return sources
 
 
-def _condense_question(llm, question, chat_history_messages):
-    if not chat_history_messages:
-        return question
-    history_text = ""
-    for msg in chat_history_messages[-10:]:
-        content = str(msg.content).replace("{", "{{").replace("}", "}}")
-        if isinstance(msg, HumanMessage):
-            history_text += f"用户: {content}\n"
-        elif isinstance(msg, AIMessage):
-            history_text += f"助手: {content}\n"
-    if not history_text.strip():
-        return question
-    safe_q = question.replace("{", "{{").replace("}", "}}")
-    prompt = CONDENSE_TEMPLATE.format(chat_history=history_text, question=safe_q)
-    try:
-        response = llm.invoke(prompt)
-        condensed = response.content.strip()
-        return condensed if condensed else question
-    except Exception:
-        return question
-
-
-def get_qa_chain(k=3, prompt_mode="anti_hallucination", search_type="similarity",
-                 fetch_k=None, lambda_mult=0.5):
-    retriever = get_retriever(k=k, search_type=search_type, fetch_k=fetch_k, lambda_mult=lambda_mult)
-    llm = get_llm()
-    prompt = _build_prompt(prompt_mode)
-    return RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=retriever,
-        return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt},
-    )
-
-
-import re
-
-_CHAT_PATTERNS = [
-    r"^(你好|您好|嗨|hi|hello|hey|早|早上好|下午好|晚上好)[\s!！?？,，。.]*$",
-    r"^(你是谁|你是什么|你叫什么|介绍一下[你自]你|你能做什|你能帮|你是干)",
-    r"^(谢谢|感谢|再见|拜拜|goodbye|bye)[\s!！?？]*$",
-    r"^(天气|讲个笑话|无聊|你好啊|在吗|有人吗)",
-    r"^[\s!！?？。，,]+$",
-]
-
-_DOMAIN_KEYWORDS = {
-    "rag", "检索", "向量", "嵌入", "embedding", "langchain", "python",
-    "streamlit", "chromadb", "大模型", "llm", "提示词", "prompt",
-    "文档", "知识库", "分块", "chunk", "记忆", "memory", "chain",
-    "agent", "retriever", "transformer", "torch", "模型", "框架",
-    "组件", "api", "函数", "编程", "开发", "数据", "机器学习",
-    "深度学习", "nlp", "自然语言", "对话", "生成", "微调",
-}
-
-CHAT_FALLBACK_THRESHOLD = 0.42
-CHAT_DOMAIN_THRESHOLD = 0.55
-
-CHAT_SYSTEM_PROMPT = """你是一个智能助手，基于 DeepSeek 大模型驱动。
-
-【重要规则】
-- 当用户问的问题**不在**知识库文档范围内（如学习路线推荐、生活常识、编程建议、开放性问题等），请直接用你的通用知识回答，不要说"无法回答"或"知识库中没有"，就像一个正常的 AI 助手一样帮助用户。
-- 当用户问的是**文档相关**的具体技术问题，系统会自动走 RAG 检索流程，你不需要特别说明。
-- 日常问候、闲聊、翻译、写作等任何问题都请正常回答。
-
-回答风格：简洁、专业、有帮助。中文回答。"""
-
-
 def _looks_like_chat_question(question):
     q = question.strip()
     if len(q) <= 1:
         return True
-    for pat in _CHAT_PATTERNS:
+    for pat in CHAT_PATTERNS:
         if re.search(pat, q, re.IGNORECASE):
             return True
-    if len(q) <= 6 and not any(kw in q.lower() for kw in _DOMAIN_KEYWORDS):
+    if len(q) <= 6 and not any(kw in q.lower() for kw in DOMAIN_KEYWORDS):
         return True
     return False
 
 
-def _chat_directly(question, chat_history_messages=None):
-    llm = get_llm(temperature=0.7)
-    messages = [HumanMessage(content=CHAT_SYSTEM_PROMPT)]
-    if chat_history_messages:
-        messages.extend(chat_history_messages[-10:])
-    messages.append(HumanMessage(content=question))
-    response = llm.invoke(messages)
-    return response.content
+def _should_fallback_to_chat(max_score, question):
+    if max_score < CHAT_FALLBACK_THRESHOLD:
+        if not any(kw in question.lower() for kw in DOMAIN_KEYWORDS):
+            return True
+    if max_score < CHAT_DOMAIN_THRESHOLD:
+        if not any(kw in question.lower() for kw in DOMAIN_KEYWORDS):
+            return True
+    return False
+
+
+def _is_rag_empty_answer(answer):
+    return any(p in answer for p in RAG_EMPTY_PATTERNS)
+
+
+def _rag_query(question, k=3, prompt_mode="anti_hallucination",
+               search_type="similarity", fetch_k=None, lambda_mult=0.5):
+    retriever = get_retriever(k=k, search_type=search_type, fetch_k=fetch_k, lambda_mult=lambda_mult)
+    llm = get_llm()
+    template = PROMPT_TEMPLATES.get(prompt_mode, ANTI_HALLUCINATION_TEMPLATE)
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = prompt | llm | StrOutputParser()
+
+    source_docs = retriever.invoke(question)
+    context = _format_docs(source_docs)
+    answer = chain.invoke({"context": context, "question": question})
+    sources = _extract_sources(source_docs)
+    return answer, sources
 
 
 def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="similarity",
                  similarity_threshold=None, fetch_k=None, lambda_mult=0.5):
     if _looks_like_chat_question(question):
-        answer = _chat_directly(question)
+        answer = chat_directly(question)
         return answer, [], "chat"
 
-    docs, scores = search_with_scores(question, k=k, search_type=search_type,
-                                      fetch_k=fetch_k, lambda_mult=lambda_mult)
+    docs, scores = search_with_scores(
+        question, k=k, search_type=search_type,
+        fetch_k=fetch_k, lambda_mult=lambda_mult,
+    )
 
-    if not docs or scores is None or not scores:
-        answer = _chat_directly(question)
+    if not docs or not scores:
+        answer = chat_directly(question)
         return answer, [], "chat"
 
     max_score = max(scores)
@@ -288,31 +180,17 @@ def ask_question(question, k=3, prompt_mode="anti_hallucination", search_type="s
             )
             return reject_msg, [], "reject"
 
-    if max_score < CHAT_FALLBACK_THRESHOLD:
-        q_lower = question.lower()
-        if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
-            answer = _chat_directly(question)
-            return answer, [], "chat"
+    if _should_fallback_to_chat(max_score, question):
+        answer = chat_directly(question)
+        return answer, [], "chat"
 
-    if max_score < CHAT_DOMAIN_THRESHOLD:
-        q_lower = question.lower()
-        if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
-            answer = _chat_directly(question)
-            return answer, [], "chat"
+    rag_answer, sources = _rag_query(
+        question, k=k, prompt_mode=prompt_mode,
+        search_type=search_type, fetch_k=fetch_k, lambda_mult=lambda_mult,
+    )
 
-    qa_chain = get_qa_chain(k=k, prompt_mode=prompt_mode, search_type=search_type,
-                            fetch_k=fetch_k, lambda_mult=lambda_mult)
-    result = qa_chain.invoke({"query": question})
-    rag_answer = result["result"]
-    sources = _extract_sources(result.get("source_documents", []))
-
-    _RAG_EMPTY_PATTERNS = [
-        "无法回答", "无法提供", "无法找到", "没有包含",
-        "文档内容中未", "上下文中没有", "提供的文档",
-        "知识库中没有", "检索到的文档", "根据提供的文档内容，无法",
-    ]
-    if any(p in rag_answer for p in _RAG_EMPTY_PATTERNS):
-        answer = _chat_directly(question)
+    if _is_rag_empty_answer(rag_answer):
+        answer = chat_directly(question)
         return answer, [], "chat"
 
     return rag_answer, sources, "rag"
@@ -329,157 +207,70 @@ class ConversationManager:
         self.memory_window = memory_window
         self.fetch_k = fetch_k
         self.lambda_mult = lambda_mult
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-        )
-        self._chain = None
-        self._last_params = None
+        self.chat_history = []
 
-    def _get_chain(self):
-        param_key = (self.k, self.prompt_mode, self.search_type, self.fetch_k, self.lambda_mult)
-        if self._chain is not None and self._last_params == param_key:
-            return self._chain
+    def _trim_history(self):
+        if self.memory_window and self.memory_window > 0:
+            max_msgs = self.memory_window * 2
+            if len(self.chat_history) > max_msgs:
+                self.chat_history = self.chat_history[-max_msgs:]
 
-        retriever = get_retriever(
-            k=self.k, search_type=self.search_type,
-            fetch_k=self.fetch_k, lambda_mult=self.lambda_mult,
-        )
-        llm = get_llm()
-        qa_prompt = _build_prompt(self.prompt_mode)
+    def _add_to_history(self, question, answer):
+        self.chat_history.append(HumanMessage(content=question))
+        self.chat_history.append(AIMessage(content=answer))
+        self._trim_history()
 
-        self._chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=retriever,
-            return_source_documents=True,
-            chain_type_kwargs={"prompt": qa_prompt},
-        )
-        self._last_params = param_key
-        return self._chain
+    def _handle_chat(self, question):
+        answer = chat_directly(question, self.chat_history)
+        self._add_to_history(question, answer)
+        return answer, [], "chat"
 
     def ask(self, question):
         if _looks_like_chat_question(question):
-            llm = get_llm(temperature=0.7)
-            chat_history = self.memory.chat_memory.messages
-            answer = _chat_directly(question, chat_history)
-            self.memory.chat_memory.add_user_message(question)
-            self.memory.chat_memory.add_ai_message(answer)
-            if self.memory_window:
-                history = self.memory.chat_memory.messages
-                if len(history) > self.memory_window * 2:
-                    trimmed = history[-(self.memory_window * 2):]
-                    self.memory.chat_memory.messages = trimmed
-            return answer, [], "chat"
+            return self._handle_chat(question)
 
         docs, scores = search_with_scores(
             question, k=self.k, search_type=self.search_type,
             fetch_k=self.fetch_k, lambda_mult=self.lambda_mult,
         )
 
-        if not docs or scores is None or not scores:
-            llm = get_llm(temperature=0.7)
-            chat_history = self.memory.chat_memory.messages
-            answer = _chat_directly(question, chat_history)
-            self.memory.chat_memory.add_user_message(question)
-            self.memory.chat_memory.add_ai_message(answer)
-            if self.memory_window:
-                history = self.memory.chat_memory.messages
-                if len(history) > self.memory_window * 2:
-                    trimmed = history[-(self.memory_window * 2):]
-                    self.memory.chat_memory.messages = trimmed
-            return answer, [], "chat"
+        if not docs or not scores:
+            return self._handle_chat(question)
 
         max_score = max(scores)
 
         if self.similarity_threshold is not None and self.similarity_threshold > 0:
             if max_score < self.similarity_threshold:
-                max_s = max(scores) if scores else 0
                 reject_msg = (
                     f"⚠️ 根据提供的文档内容，无法回答该问题。\n\n"
                     f"（检索到的文档片段与问题的最高相似度为 "
-                    f"{max_s:.2f}，"
+                    f"{max_score:.2f}，"
                     f"低于设定阈值 {self.similarity_threshold}）\n\n"
                     f"建议您尝试换个方式提问，或确认文档中是否包含相关信息。"
                 )
-                self.memory.chat_memory.add_user_message(question)
-                self.memory.chat_memory.add_ai_message(reject_msg)
+                self._add_to_history(question, reject_msg)
                 return reject_msg, [], "reject"
 
-        if max_score < CHAT_FALLBACK_THRESHOLD:
-            q_lower = question.lower()
-            if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
-                llm = get_llm(temperature=0.7)
-                chat_history = self.memory.chat_memory.messages
-                answer = _chat_directly(question, chat_history)
-                self.memory.chat_memory.add_user_message(question)
-                self.memory.chat_memory.add_ai_message(answer)
-                if self.memory_window:
-                    history = self.memory.chat_memory.messages
-                    if len(history) > self.memory_window * 2:
-                        trimmed = history[-(self.memory_window * 2):]
-                        self.memory.chat_memory.messages = trimmed
-                return answer, [], "chat"
-
-        if max_score < CHAT_DOMAIN_THRESHOLD:
-            q_lower = question.lower()
-            if not any(kw in q_lower for kw in _DOMAIN_KEYWORDS):
-                llm = get_llm(temperature=0.7)
-                chat_history = self.memory.chat_memory.messages
-                answer = _chat_directly(question, chat_history)
-                self.memory.chat_memory.add_user_message(question)
-                self.memory.chat_memory.add_ai_message(answer)
-                if self.memory_window:
-                    history = self.memory.chat_memory.messages
-                    if len(history) > self.memory_window * 2:
-                        trimmed = history[-(self.memory_window * 2):]
-                        self.memory.chat_memory.messages = trimmed
-                return answer, [], "chat"
+        if _should_fallback_to_chat(max_score, question):
+            return self._handle_chat(question)
 
         llm = get_llm()
-        chat_history = self.memory.chat_memory.messages
-        condensed = _condense_question(llm, question, chat_history)
+        condensed = condense_question(llm, question, self.chat_history)
 
-        chain = self._get_chain()
-        result = chain.invoke({"query": condensed})
-        rag_answer = result["result"]
-        sources = _extract_sources(result.get("source_documents", []))
+        rag_answer, sources = _rag_query(
+            condensed, k=self.k, prompt_mode=self.prompt_mode,
+            search_type=self.search_type, fetch_k=self.fetch_k,
+            lambda_mult=self.lambda_mult,
+        )
 
-        _RAG_EMPTY_PATTERNS = [
-            "无法回答", "无法提供", "无法找到", "没有包含",
-            "文档内容中未", "上下文中没有", "提供的文档",
-            "知识库中没有", "检索到的文档", "根据提供的文档内容，无法",
-        ]
-        if any(p in rag_answer for p in _RAG_EMPTY_PATTERNS):
-            llm_chat = get_llm(temperature=0.7)
-            chat_history = self.memory.chat_memory.messages
-            answer = _chat_directly(question, chat_history)
-            self.memory.chat_memory.add_user_message(question)
-            self.memory.chat_memory.add_ai_message(answer)
-            if self.memory_window:
-                history = self.memory.chat_memory.messages
-                if len(history) > self.memory_window * 2:
-                    trimmed = history[-(self.memory_window * 2):]
-                    self.memory.chat_memory.messages = trimmed
-            return answer, [], "chat"
+        if _is_rag_empty_answer(rag_answer):
+            return self._handle_chat(question)
 
-        answer = rag_answer
-
-        self.memory.chat_memory.add_user_message(question)
-        self.memory.chat_memory.add_ai_message(answer)
-
-        if self.memory_window:
-            history = self.memory.chat_memory.messages
-            if len(history) > self.memory_window * 2:
-                trimmed = history[-(self.memory_window * 2):]
-                self.memory.chat_memory.messages = trimmed
-
-        return answer, sources, "rag"
+        self._add_to_history(question, rag_answer)
+        return rag_answer, sources, "rag"
 
     def reset(self):
-        self.memory.clear()
-        self._chain = None
-        self._last_params = None
+        self.chat_history = []
 
 
 def cli_qa():
@@ -493,9 +284,9 @@ def cli_qa():
     print("      /window <数字> 设置记忆窗口(0=不限制)")
     print("=" * 60)
 
-    k = 3
-    prompt_mode = "anti_hallucination"
-    search_type = "similarity"
+    k = DEFAULT_K
+    prompt_mode = DEFAULT_PROMPT_MODE
+    search_type = DEFAULT_SEARCH_TYPE
     similarity_threshold = None
     memory_window = None
     conv_mgr = ConversationManager(
@@ -509,7 +300,12 @@ def cli_qa():
     print()
 
     while True:
-        question = input("请输入问题: ").strip()
+        try:
+            question = input("请输入问题: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n再见！")
+            break
+
         if question.lower() in ("quit", "exit", "q"):
             print("再见！")
             break
@@ -520,7 +316,6 @@ def cli_qa():
             try:
                 k = int(question.split()[1])
                 conv_mgr.k = k
-                conv_mgr._chain = None
                 print(f"检索数量已设置为 k={k}")
             except (IndexError, ValueError):
                 print("用法: /k <数字>")
@@ -531,18 +326,16 @@ def cli_qa():
             if len(mode) > 1 and mode[1] in PROMPT_TEMPLATES:
                 prompt_mode = mode[1]
                 conv_mgr.prompt_mode = prompt_mode
-                conv_mgr._chain = None
                 print(f"提示词模式已设置为: {prompt_mode}")
             else:
                 print(f"可用模式: {', '.join(PROMPT_TEMPLATES.keys())}")
             continue
 
         if question.startswith("/search "):
-            st = question.split(maxsplit=1)
-            if len(st) > 1 and st[1] in ("similarity", "mmr"):
-                search_type = st[1]
+            st_val = question.split(maxsplit=1)
+            if len(st_val) > 1 and st_val[1] in ("similarity", "mmr"):
+                search_type = st_val[1]
                 conv_mgr.search_type = search_type
-                conv_mgr._chain = None
                 print(f"检索策略已设置为: {search_type}")
             else:
                 print("可用策略: similarity, mmr")
@@ -590,7 +383,3 @@ def cli_qa():
             print()
         except Exception as e:
             print(f"错误: {e}\n")
-
-
-if __name__ == "__main__":
-    cli_qa()

@@ -1,0 +1,11 @@
+[global]
+developmentMode = false
+
+[server]
+enableCORS = true
+enableXsrfProtection = false
+fileWatcherType = "none"
+headless = true
+
+[browser]
+gatherUsageStats = false

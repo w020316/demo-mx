@@ -1,18 +1,26 @@
 import os
+import sys
 import json
 import time
 import math
 import tempfile
 import difflib
+import logging
 from collections import defaultdict
-from config import PROJECT_ROOT
 
-FEEDBACK_DIR = os.path.join(PROJECT_ROOT, "feedback")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pylibs"))
+
+from config import (
+    PROJECT_ROOT, DATA_DIR, FEEDBACK_DIR,
+    RATE_LIMIT_SECONDS, RATE_LIMIT_PER_SESSION,
+    MAX_QUESTION_LENGTH, MAX_ANSWER_LENGTH,
+    MAX_RATINGS_ENTRIES, DEDUP_THRESHOLD, WILSON_Z,
+)
+
+logger = logging.getLogger(__name__)
+
 RATINGS_FILE = os.path.join(FEEDBACK_DIR, "ratings.json")
 QA_PAIRS_FILE = os.path.join(FEEDBACK_DIR, "qa_pairs.json")
-
-RATE_LIMIT_SECONDS = 60
-RATE_LIMIT_PER_SESSION = 20
 
 NEGATIVE_REASONS = {
     "inaccurate": "回答不准确",
@@ -21,8 +29,6 @@ NEGATIVE_REASONS = {
     "format_bad": "格式/排版混乱",
     "other": "其他原因",
 }
-
-WILSON_Z = 1.959964
 
 
 def _ensure_dir():
@@ -33,9 +39,17 @@ def _load_json(filepath):
     if not os.path.exists(filepath):
         return []
     try:
+        file_size = os.path.getsize(filepath)
+        if file_size > 50 * 1024 * 1024:
+            logger.warning(f"反馈文件过大 ({file_size} bytes)，可能影响性能: {filepath}")
         with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
+            data = json.load(f)
+        if not isinstance(data, list):
+            logger.warning(f"反馈文件格式异常，期望列表: {filepath}")
+            return []
+        return data
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error(f"加载反馈文件失败: {filepath}, 错误: {e}")
         return []
 
 
@@ -63,16 +77,22 @@ def _wilson_score(positive, total):
     spread = z * math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)
     return max(0.0, min(1.0, (center - spread) / denom))
 
-DEDUP_THRESHOLD = 0.65
-
 
 def _question_similarity(q1, q2):
     return difflib.SequenceMatcher(None, q1.strip(), q2.strip()).ratio()
 
 
+def _sanitize_string(value, max_length):
+    if not isinstance(value, str):
+        value = str(value)
+    return value[:max_length]
+
+
 def check_abuse(question, session_ratings_count):
     if session_ratings_count >= RATE_LIMIT_PER_SESSION:
         return False, f"单次会话最多评分 {RATE_LIMIT_PER_SESSION} 次，已达上限"
+    if not isinstance(question, str) or not question.strip():
+        return False, "问题内容无效"
     ratings = _load_json(RATINGS_FILE)
     now = time.time()
     for r in reversed(ratings):
@@ -87,17 +107,24 @@ def check_abuse(question, session_ratings_count):
 
 def record_rating(question, answer, score, params=None, reason=None):
     _ensure_dir()
+    question = _sanitize_string(question, MAX_QUESTION_LENGTH)
+    answer = _sanitize_string(answer, MAX_ANSWER_LENGTH)
+    if not isinstance(score, (int, float)):
+        score = 0
     entry = {
-        "question": question[:500],
-        "answer": answer[:1000],
+        "question": question,
+        "answer": answer,
         "score": score,
         "timestamp": time.time(),
-        "params": params or {},
+        "params": params if isinstance(params, dict) else {},
     }
     if score < 0 and reason:
-        entry["reason"] = reason
+        entry["reason"] = str(reason)[:100]
+
     ratings = _load_json(RATINGS_FILE)
     ratings.append(entry)
+    if len(ratings) > MAX_RATINGS_ENTRIES:
+        ratings = ratings[-MAX_RATINGS_ENTRIES:]
     _save_json(RATINGS_FILE, ratings)
 
     if score >= 1:
@@ -106,22 +133,22 @@ def record_rating(question, answer, score, params=None, reason=None):
         for existing in qa_pairs:
             if _question_similarity(question, existing.get("question", "")) > DEDUP_THRESHOLD:
                 if score > existing.get("score", 0):
-                    existing["question"] = question[:500]
-                    existing["answer"] = answer[:1000]
+                    existing["question"] = question
+                    existing["answer"] = answer
                     existing["score"] = score
                     existing["timestamp"] = entry["timestamp"]
-                    existing["params"] = params or {}
+                    existing["params"] = params if isinstance(params, dict) else {}
                     existing["source"] = "user_feedback"
                 dup = True
                 break
         if not dup:
             qa_pairs.append({
-                "question": question[:500],
-                "answer": answer[:1000],
+                "question": question,
+                "answer": answer,
                 "source": "user_feedback",
                 "score": score,
                 "timestamp": entry["timestamp"],
-                "params": params or {},
+                "params": params if isinstance(params, dict) else {},
             })
         _save_json(QA_PAIRS_FILE, qa_pairs)
 
@@ -132,18 +159,9 @@ def get_stats():
     ratings = _load_json(RATINGS_FILE)
     if not ratings:
         return {
-            "total": 0,
-            "positive": 0,
-            "negative": 0,
-            "positive_rate": 0.0,
-            "health_score": 0,
-            "by_k": {},
-            "by_threshold": {},
-            "by_search_type": {},
-            "by_prompt_mode": {},
-            "by_reason": {},
-            "recent_trend": [],
-            "timeline": [],
+            "total": 0, "positive": 0, "negative": 0, "positive_rate": 0.0,
+            "health_score": 0, "by_k": {}, "by_threshold": {}, "by_search_type": {},
+            "by_prompt_mode": {}, "by_reason": {}, "recent_trend": [], "timeline": [],
         }
 
     positive = sum(1 for r in ratings if r.get("score", 0) >= 1)
@@ -158,6 +176,8 @@ def get_stats():
 
     for r in ratings:
         p = r.get("params", {})
+        if not isinstance(p, dict):
+            p = {}
         k_val = str(p.get("k", "unknown"))
         thresh_val = p.get("similarity_threshold")
         search_val = p.get("search_type", "unknown")
@@ -221,19 +241,22 @@ def get_stats():
     health_score = int(volume_score * 0.2 + quality_score * 0.6 + diversity_score * 0.2)
 
     return {
-        "total": total,
-        "positive": positive,
-        "negative": negative,
+        "total": total, "positive": positive, "negative": negative,
         "positive_rate": round(base_rate * 100, 1),
         "health_score": min(100, max(0, health_score)),
-        "by_k": dict(by_k),
-        "by_threshold": dict(by_threshold),
-        "by_search_type": dict(by_search_type),
-        "by_prompt_mode": dict(by_prompt_mode),
-        "by_reason": dict(by_reason),
-        "recent_trend": recent_trend,
+        "by_k": dict(by_k), "by_threshold": dict(by_threshold),
+        "by_search_type": dict(by_search_type), "by_prompt_mode": dict(by_prompt_mode),
+        "by_reason": dict(by_reason), "recent_trend": recent_trend,
         "timeline": list(reversed(timeline)),
     }
+
+
+def _rank_by_wilson(data_dict):
+    return sorted(
+        data_dict.items(),
+        key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
+        reverse=True,
+    )
 
 
 def get_recommendation(stats=None):
@@ -245,11 +268,7 @@ def get_recommendation(stats=None):
 
     k_data = stats.get("by_k", {})
     if k_data:
-        ranked_k = sorted(
-            k_data.items(),
-            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
-            reverse=True,
-        )
+        ranked_k = _rank_by_wilson(k_data)
         best = ranked_k[0]
         ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
         if best[1].get("total", 0) >= 1 and ws > 0.3:
@@ -266,11 +285,7 @@ def get_recommendation(stats=None):
 
     thresh_data = stats.get("by_threshold", {})
     if thresh_data:
-        ranked_t = sorted(
-            thresh_data.items(),
-            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
-            reverse=True,
-        )
+        ranked_t = _rank_by_wilson(thresh_data)
         best = ranked_t[0]
         ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
         if best[1].get("total", 0) >= 1 and ws > 0.3:
@@ -288,11 +303,7 @@ def get_recommendation(stats=None):
 
     search_data = stats.get("by_search_type", {})
     if search_data:
-        ranked_s = sorted(
-            search_data.items(),
-            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
-            reverse=True,
-        )
+        ranked_s = _rank_by_wilson(search_data)
         best = ranked_s[0]
         ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
         if best[1].get("total", 0) >= 1 and ws > 0.3:
@@ -310,11 +321,7 @@ def get_recommendation(stats=None):
 
     prompt_data = stats.get("by_prompt_mode", {})
     if prompt_data:
-        ranked_p = sorted(
-            prompt_data.items(),
-            key=lambda x: _wilson_score(x[1].get("positive", 0), x[1].get("total", 0)),
-            reverse=True,
-        )
+        ranked_p = _rank_by_wilson(prompt_data)
         best = ranked_p[0]
         ws = _wilson_score(best[1].get("positive", 0), best[1].get("total", 0))
         if best[1].get("total", 0) >= 1 and ws > 0.3:
@@ -372,9 +379,7 @@ def export_qa_pairs_to_docs():
     if not qa_pairs:
         return 0
 
-    from config import DATA_DIR
     export_path = os.path.join(DATA_DIR, "用户反馈问答对.md")
-
     os.makedirs(DATA_DIR, exist_ok=True)
 
     lines = [
