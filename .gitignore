@@ -11,8 +11,10 @@ feedback/
 dist/
 build/
 .streamlit/secrets.toml
+.streamlit/credentials.toml
 streamlit.log
 *.log
 .pytest_cache/
 htmlcov/
 .coverage
+_test_*.py
