@@ -331,30 +331,36 @@ def _render_dashboard(stats, rec_data):
             qac = _cached_qa_count()
             st.metric("问答对", f"{qac} 条", "+可导出补充知识库")
 
-        if rec_data.get("recommendations"):
+        recommendations_list = rec_data.get("recommendations", [])
+        if isinstance(recommendations_list, list) and recommendations_list:
             st.markdown("#### 🔝 推荐参数（一键应用）")
-            for rec in rec_data.get("recommendations", []):
+            for rec in recommendations_list:
+                if not isinstance(rec, dict):
+                    continue
                 conf_cls = "high-conf" if rec.get("confidence") == "high" else "med-conf"
                 conf_tag = "高置信" if rec.get("confidence") == "high" else "收集中"
                 param_labels = {
-                    "k": f'k={rec["value"]}',
-                    "similarity_threshold": f'阈值={"关闭" if rec["value"] is None else rec["value"]}',
-                    "search_type": {"similarity":"相似度检索","mmr":"MMR多样性"}.get(rec["value"], rec["value"]),
-                    "prompt_mode": f'模式={rec["value"][:8]}',
+                    "k": f'k={rec.get("value", "")}',
+                    "similarity_threshold": f'阈值={"关闭" if rec.get("value") is None else rec.get("value", "")}',
+                    "search_type": {"similarity":"相似度检索","mmr":"MMR多样性"}.get(rec.get("value"), rec.get("value", "")),
+                    "prompt_mode": f'模式={str(rec.get("value", ""))[:8]}',
                 }
-                plabel = param_labels.get(rec["param"], rec["param"])
+                plabel = param_labels.get(rec.get("param"), rec.get("param", ""))
                 rc1, rc2 = st.columns([5, 1])
                 with rc1:
+                    wilson_score = rec.get("wilson_score", 0)
+                    raw_rate = rec.get("raw_positive_rate", 0)
+                    sample_size = rec.get("sample_size", 0)
                     st.markdown(
                         f'<div class="rec-card {conf_cls}">'
-                        f'<b>{plabel}</b> · Wilson={rec["wilson_score"]:.2f} '
-                        f'· 好评率{rec["raw_positive_rate"]:.0%}({rec["sample_size"]}条) '
+                        f'<b>{plabel}</b> · Wilson={wilson_score:.2f} '
+                        f'· 好评率{raw_rate:.0%}({sample_size}条) '
                         f'<span style="font-size:.68rem;opacity:0.6;">[{conf_tag}]</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 with rc2:
-                    if st.button("✨ 应用", key=f"app_{rec['param']}", use_container_width=True, **{"css_classes": ["apply-btn"]} if False else {}):
+                    if st.button("✨ 应用", key=f"app_{rec.get('param', '')}", use_container_width=True, **{"css_classes": ["apply-btn"]} if False else {}):
                         _apply_recommendation(rec)
                         st.rerun()
         else:
@@ -370,16 +376,16 @@ def _render_dashboard(stats, rec_data):
 
     with tab2:
         timeline = stats.get("timeline", [])
-        if timeline:
+        if isinstance(timeline, list) and timeline:
             df_data = {"时间段": [], "反馈数": [], "好评率(%)": []}
-            active_buckets = [t for t in timeline if t["total"] > 0]
+            active_buckets = [t for t in timeline if isinstance(t, dict) and t.get("total", 0) > 0]
             if len(active_buckets) >= 2:
                 for t in active_buckets:
-                    df_data["时间段"].append(t["bucket"])
-                    df_data["反馈数"].append(t["total"])
-                    df_data["好评率(%)"].append(t["rate"] if t["rate"] is not None else 0)
+                    df_data["时间段"].append(t.get("bucket", ""))
+                    df_data["反馈数"].append(t.get("total", 0))
+                    df_data["好评率(%)"].append(t.get("rate") if t.get("rate") is not None else 0)
                 st.dataframe(df_data, use_container_width=True, hide_index=True)
-                rates_only = [t["rate"] for t in active_buckets if t["rate"] is not None]
+                rates_only = [t.get("rate") for t in active_buckets if t.get("rate") is not None]
                 if rates_only:
                     chart_data = {"好评率": rates_only}
                     row_idx = list(range(len(rates_only)))
@@ -396,6 +402,17 @@ def _render_dashboard(stats, rec_data):
         by_prompt = stats.get("by_prompt_mode", {})
         by_reason = stats.get("by_reason", {})
 
+        if not isinstance(by_k, dict):
+            by_k = {}
+        if not isinstance(by_thresh, dict):
+            by_thresh = {}
+        if not isinstance(by_search, dict):
+            by_search = {}
+        if not isinstance(by_prompt, dict):
+            by_prompt = {}
+        if not isinstance(by_reason, dict):
+            by_reason = {}
+
         has_param_data = any([by_k, by_thresh, by_search, by_prompt])
         if has_param_data:
             sc_a, sc_b = st.columns(2)
@@ -403,33 +420,33 @@ def _render_dashboard(stats, rec_data):
             with sc_a:
                 if by_k:
                     st.markdown("**检索数量 k**")
-                    k_df = {"k值": list(by_k.keys()), "总数": [by_k[k]["total"] for k in by_k], "好评数": [by_k[k]["positive"] for k in by_k]}
+                    k_df = {"k值": list(by_k.keys()), "总数": [by_k[k].get("total", 0) for k in by_k], "好评数": [by_k[k].get("positive", 0) for k in by_k]}
                     st.dataframe(k_df, use_container_width=True, hide_index=True)
-                    k_rates = {k: round(by_k[k]["positive"]/by_k[k]["total"]*100, 1) if by_k[k]["total"] > 0 else 0 for k in by_k}
+                    k_rates = {k: round(by_k[k].get("positive", 0)/max(by_k[k].get("total", 1), 1)*100, 1) if by_k[k].get("total", 0) > 0 else 0 for k in by_k}
                     st.bar_chart(k_rates, height=150, horizontal=False)
 
                 if by_thresh:
                     st.markdown("**拒答阈值**")
                     t_labels = {"off": "关闭"}
-                    t_df = {"阈值": [t_labels.get(t, t) for t in by_thresh.keys()], "总数": [by_thresh[t]["total"] for t in by_thresh], "好评数": [by_thresh[t]["positive"] for t in by_thresh]}
+                    t_df = {"阈值": [t_labels.get(t, t) for t in by_thresh.keys()], "总数": [by_thresh[t].get("total", 0) for t in by_thresh], "好评数": [by_thresh[t].get("positive", 0) for t in by_thresh]}
                     st.dataframe(t_df, use_container_width=True, hide_index=True)
-                    t_rates = {t_labels.get(t, t): round(by_thresh[t]["positive"]/by_thresh[t]["total"]*100, 1) if by_thresh[t]["total"] > 0 else 0 for t in by_thresh}
+                    t_rates = {t_labels.get(t, t): round(by_thresh[t].get("positive", 0)/max(by_thresh[t].get("total", 1), 1)*100, 1) if by_thresh[t].get("total", 0) > 0 else 0 for t in by_thresh}
                     st.bar_chart(t_rates, height=150, horizontal=False)
 
             with sc_b:
                 if by_search:
                     st.markdown("**检索策略**")
                     s_labels = {"similarity": "相似度", "mmr": "MMR多样性"}
-                    s_df = {"策略": [s_labels.get(s, s) for s in by_search.keys()], "总数": [by_search[s]["total"] for s in by_search], "好评数": [by_search[s]["positive"] for s in by_search]}
+                    s_df = {"策略": [s_labels.get(s, s) for s in by_search.keys()], "总数": [by_search[s].get("total", 0) for s in by_search], "好评数": [by_search[s].get("positive", 0) for s in by_search]}
                     st.dataframe(s_df, use_container_width=True, hide_index=True)
-                    s_rates = {s_labels.get(s, s): round(by_search[s]["positive"]/by_search[s]["total"]*100, 1) if by_search[s]["total"] > 0 else 0 for s in by_search}
+                    s_rates = {s_labels.get(s, s): round(by_search[s].get("positive", 0)/max(by_search[s].get("total", 1), 1)*100, 1) if by_search[s].get("total", 0) > 0 else 0 for s in by_search}
                     st.bar_chart(s_rates, height=150, horizontal=False)
 
                 if by_prompt:
                     st.markdown("**提示词模式**")
-                    p_df = {"模式": list(by_prompt.keys()), "总数": [by_prompt[p]["total"] for p in by_prompt], "好评数": [by_prompt[p]["positive"] for p in by_prompt]}
+                    p_df = {"模式": list(by_prompt.keys()), "总数": [by_prompt[p].get("total", 0) for p in by_prompt], "好评数": [by_prompt[p].get("positive", 0) for p in by_prompt]}
                     st.dataframe(p_df, use_container_width=True, hide_index=True)
-                    p_rates = {p[:10]: round(by_prompt[p]["positive"]/by_prompt[p]["total"]*100, 1) if by_prompt[p]["total"] > 0 else 0 for p in by_prompt}
+                    p_rates = {p[:10]: round(by_prompt[p].get("positive", 0)/max(by_prompt[p].get("total", 1), 1)*100, 1) if by_prompt[p].get("total", 0) > 0 else 0 for p in by_prompt}
                     st.bar_chart(p_rates, height=150, horizontal=False)
 
             if by_reason:
